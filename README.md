@@ -19,7 +19,7 @@ Setiap level akan semakin sulit untuk menguji kemampuanmu.
 
 ## 🌐 Demo
 Kamu bisa mencoba game ini langsung di browser tanpa perlu download atau install.  
-👉 [Coba UvoWord Sekarang](https://uvoshop.my.id) *(tambahkan link jika ada demo online)*  
+👉 [Coba UvoWord Sekarang](https://uvoword.uvoshop.my.id)
 
 ---
 
