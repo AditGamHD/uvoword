@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UvoWorld - Game</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            height: 100vh;
+            overflow: hidden;
+            color: white;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 250px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            border-right: 2px solid rgba(255, 255, 255, 0.1);
+            overflow-y: auto;
+        }
+        
+        .user-info {
+            text-align: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 20px;
+        }
+        
+        .user-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff7e5f, #feb47b);
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
+        .user-name {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        .user-email {
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+        
+        .section {
+            margin-bottom: 25px;
+        }
+        
+        .section-title {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .world-list {
+            list-style: none;
+        }
+        
+        .world-item {
+            padding: 10px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .world-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(5px);
+        }
+        
+        .world-item.active {
+            background: rgba(255, 255, 255, 0.3);
+            border-left: 4px solid #ffcc00;
+        }
+        
+        .btn {
+            padding: 10px 15px;
+            background: linear-gradient(135deg, #ff7e5f, #feb47b);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .btn-logout {
+            background: linear-gradient(135deg, #ff416c, #ff4b2b);
+            margin-top: auto;
+        }
+        
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .current-world {
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        .resources {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .resource {
+            display: flex;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 15px;
+            border-radius: 20px;
+        }
+        
+        .resource-icon {
+            margin-right: 8px;
+            font-size: 1.2rem;
+        }
+        
+        /* Game World */
+        .game-world {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .world-grid {
+            display: grid;
+            grid-template-columns: repeat(20, 1fr);
+            grid-template-rows: repeat(15, 1fr);
+            height: 100%;
+            width: 100%;
+        }
+        
+        .block {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .block:hover {
+            transform: scale(1.1);
+            z-index: 10;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        
+        /* Inventory */
+        .inventory {
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 15px;
+            padding: 15px;
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+        }
+        
+        .inventory-item {
+            min-width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            padding: 5px;
+        }
+        
+        .inventory-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-5px);
+        }
+        
+        .inventory-item.active {
+            background: rgba(255, 255, 255, 0.3);
+            border: 2px solid #ffcc00;
+        }
+        
+        .item-icon {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+        }
+        
+        .item-name {
+            font-size: 0.7rem;
+            text-align: center;
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f);
+            padding: 30px;
+            border-radius: 15px;
+            width: 400px;
+            max-width: 90%;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .modal-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .modal-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .modal-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .modal-btn-primary {
+            background: linear-gradient(135deg, #ff7e5f, #feb47b);
+        }
+        
+        .modal-btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .modal-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Animasi */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="user-info">
+                <div class="user-avatar" id="user-avatar">U</div>
+                <div class="user-name" id="user-name">Username</div>
+                <div class="user-email" id="user-email">user@example.com</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Dunia Saya</div>
+                <ul class="world-list" id="world-list">
+                    <!-- Daftar dunia akan diisi oleh JavaScript -->
+                </ul>
+                <button class="btn" id="create-world-btn">Buat Dunia Baru</button>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Teman Online</div>
+                <div id="online-friends">Tidak ada teman online</div>
+            </div>
+            
+            <button class="btn btn-logout" id="logout-btn">Keluar</button>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="game-header">
+                <div class="current-world" id="current-world">Memuat dunia...</div>
+                <div class="resources">
+                    <div class="resource">
+                        <span class="resource-icon">💎</span>
+                        <span id="gem-count">0</span>
+                    </div>
+                    <div class="resource">
+                        <span class="resource-icon">🪙</span>
+                        <span id="coin-count">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="game-world">
+                <div class="world-grid" id="world-grid">
+                    <!-- Grid dunia akan diisi oleh JavaScript -->
+                </div>
+            </div>
+            
+            <div class="inventory" id="inventory">
+                <!-- Inventory akan diisi oleh JavaScript -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Buat Dunia Baru -->
+    <div class="modal" id="create-world-modal">
+        <div class="modal-content fade-in">
+            <div class="modal-title">Buat Dunia Baru</div>
+            <input type="text" class="modal-input" id="world-domain" placeholder="Domain dunia (contoh: petualanganku)">
+            <input type="text" class="modal-input" id="world-name" placeholder="Nama dunia (contoh: Petualanganku)">
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" id="cancel-create">Batal</button>
+                <button class="modal-btn modal-btn-primary" id="confirm-create">Buat</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Masuk ke Dunia -->
+    <div class="modal" id="join-world-modal">
+        <div class="modal-content fade-in">
+            <div class="modal-title">Masuk ke Dunia</div>
+            <input type="text" class="modal-input" id="join-world-domain" placeholder="Domain dunia (contoh: petualanganku)">
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" id="cancel-join">Batal</button>
+                <button class="modal-btn modal-btn-primary" id="confirm-join">Masuk</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Inisialisasi Firebase
+        const firebaseConfig = {
+            databaseURL: "https://duniauvo-default-rtdb.asia-southeast1.firebasedatabase.app"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
+        // Data blok
+        const blocks = [
+            { id: 1, name: "Dirt Block", nameId: "Blok tanah", emoji: "🟫" },
+            { id: 2, name: "Grass Block", nameId: "Tanah berumput", emoji: "🟩" },
+            { id: 3, name: "Stone Block", nameId: "Batu keras", emoji: "⬜" },
+            { id: 4, name: "Sand Block", nameId: "Pasir", emoji: "🟨" },
+            { id: 5, name: "Water Block", nameId: "Air", emoji: "🟦" },
+            { id: 6, name: "Lava Block", nameId: "Lava panas", emoji: "🟥" },
+            { id: 7, name: "Ice Block", nameId: "Es", emoji: "🧊" },
+            { id: 8, name: "Snow Block", nameId: "Salju", emoji: "⬜" },
+            { id: 9, name: "Cloud Block", nameId: "Awan", emoji: "☁️" },
+            { id: 10, name: "Brick Block", nameId: "Bata", emoji: "🧱" },
+            { id: 11, name: "Coal Block", nameId: "Batu bara", emoji: "⬛" },
+            { id: 12, name: "Iron Block", nameId: "Besi", emoji: "⚪" },
+            { id: 13, name: "Gold Block", nameId: "Emas", emoji: "🟨" },
+            { id: 14, name: "Diamond Block", nameId: "Berlian", emoji: "💎" },
+            { id: 15, name: "Emerald Block", nameId: "Zamrud", emoji: "🟢" },
+            { id: 16, name: "Ruby Block", nameId: "Ruby merah", emoji: "🔴" },
+            { id: 17, name: "Amethyst Block", nameId: "Batu ungu", emoji: "🟪" },
+            { id: 18, name: "Obsidian Block", nameId: "Obsidian", emoji: "⬛" },
+            { id: 19, name: "Crystal Block", nameId: "Kristal", emoji: "✨" },
+            { id: 20, name: "Light Block", nameId: "Blok bercahaya", emoji: "🌟" },
+            { id: 21, name: "Wood Block", nameId: "Kayu dasar", emoji: "🟤" },
+            { id: 22, name: "Oak Plank Block", nameId: "Papan ek", emoji: "🟫" },
+            { id: 23, name: "Pine Plank Block", nameId: "Papan pinus", emoji: "🟤" },
+            { id: 24, name: "Bamboo Block", nameId: "Bambu", emoji: "🟩" },
+            { id: 25, name: "Leaf Block", nameId: "Daun", emoji: "🟢" },
+            { id: 26, name: "Mushroom Block", nameId: "Jamur", emoji: "🍄" },
+            { id: 27, name: "Pumpkin Block", nameId: "Labu", emoji: "🎃" },
+            { id: 28, name: "Melon Block", nameId: "Semangka", emoji: "🍉" },
+            { id: 29, name: "Wheat Block", nameId: "Gandum", emoji: "🌾" },
+            { id: 30, name: "Cactus Block", nameId: "Kaktus", emoji: "🌵" },
+            { id: 31, name: "Glass Block", nameId: "Kaca bening", emoji: "🔲" },
+            { id: 32, name: "Window Block", nameId: "Jendela", emoji: "🪟" },
+            { id: 33, name: "Door Block", nameId: "Pintu", emoji: "🚪" },
+            { id: 34, name: "Fence Block", nameId: "Pagar", emoji: "🪵" },
+            { id: 35, name: "Path Block", nameId: "Jalan tanah", emoji: "🟫" },
+            { id: 36, name: "Road Block", nameId: "Aspal", emoji: "⬛" },
+            { id: 37, name: "Tile Block", nameId: "Keramik", emoji: "⚪" },
+            { id: 38, name: "Carpet Block", nameId: "Karpet", emoji: "🟥" },
+            { id: 39, name: "Marble Block", nameId: "Marmer", emoji: "🤍" },
+            { id: 40, name: "Granite Block", nameId: "Granit", emoji: "🪨" },
+            { id: 41, name: "Portal Block", nameId: "Portal sihir", emoji: "🌀" },
+            { id: 42, name: "Nether Block", nameId: "Blok neraka", emoji: "🔥" },
+            { id: 43, name: "End Block", nameId: "Blok akhir", emoji: "🟪" },
+            { id: 44, name: "Void Block", nameId: "Blok kosong", emoji: "⬛" },
+            { id: 45, name: "Energy Block", nameId: "Blok energi", emoji: "🔋" },
+            { id: 46, name: "Magnet Block", nameId: "Blok magnet", emoji: "🧲" },
+            { id: 47, name: "Radioactive Block", nameId: "Blok nuklir", emoji: "☢️" },
+            { id: 48, name: "Cloudstone Block", nameId: "Batu awan", emoji: "☁️⬜" },
+            { id: 49, name: "Glowstone Block", nameId: "Batu bercahaya", emoji: "🌟" },
+            { id: 50, name: "Ancient Block", nameId: "Blok kuno", emoji: "🏺" }
+        ];
+        
+        // Variabel global
+        let currentUser = null;
+        let currentWorld = null;
+        let selectedBlock = blocks[0];
+        let userWorlds = [];
+        
+        // Fungsi untuk memuat data user
+        function loadUserData() {
+            const userData = localStorage.getItem('uvoworld_user');
+            if (!userData) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            currentUser = JSON.parse(userData);
+            document.getElementById('user-name').textContent = currentUser.username;
+            document.getElementById('user-email').textContent = currentUser.email || 'Tidak ada email';
+            document.getElementById('user-avatar').textContent = currentUser.username.charAt(0).toUpperCase();
+            
+            // Memuat dunia user
+            loadUserWorlds();
+        }
+        
+        // Fungsi untuk memuat dunia user
+        function loadUserWorlds() {
+            database.ref('users/' + currentUser.username + '/worlds').once('value').then(snapshot => {
+                userWorlds = [];
+                const worldList = document.getElementById('world-list');
+                worldList.innerHTML = '';
+                
+                snapshot.forEach(childSnapshot => {
+                    const world = childSnapshot.val();
+                    world.key = childSnapshot.key;
+                    userWorlds.push(world);
+                    
+                    const worldItem = document.createElement('li');
+                    worldItem.className = 'world-item';
+                    worldItem.textContent = world.name + ' (' + world.domain + ')';
+                    worldItem.dataset.domain = world.domain;
+                    
+                    worldItem.addEventListener('click', function() {
+                        loadWorld(world.domain);
+                        
+                        // Hapus class active dari semua item
+                        document.querySelectorAll('.world-item').forEach(item => {
+                            item.classList.remove('active');
+                        });
+                        
+                        // Tambah class active ke item yang diklik
+                        this.classList.add('active');
+                    });
+                    
+                    worldList.appendChild(worldItem);
+                });
+                
+                // Load dunia home secara default
+                if (userWorlds.length > 0) {
+                    loadWorld(userWorlds[0].domain);
+                    document.querySelector('.world-item').classList.add('active');
+                }
+            });
+        }
+        
+        // Fungsi untuk memuat dunia
+        function loadWorld(domain) {
+            database.ref('worlds/' + domain).once('value').then(snapshot => {
+                if (snapshot.exists()) {
+                    currentWorld = snapshot.val();
+                    currentWorld.domain = domain;
+                    
+                    document.getElementById('current-world').textContent = currentWorld.name + ' (' + domain + ')';
+                    renderWorld();
+                } else {
+                    // Jika dunia tidak ditemukan, buat dunia baru
+                    createNewWorld(domain, domain.charAt(0).toUpperCase() + domain.slice(1));
+                }
+            });
+        }
+        
+        // Fungsi untuk membuat dunia baru
+        function createNewWorld(domain, name) {
+            const newWorld = {
+                name: name,
+                domain: domain,
+                owner: currentUser.username,
+                created: new Date().toISOString(),
+                blocks: {}
+            };
+            
+            // Buat grid dasar
+            for (let x = 0; x < 20; x++) {
+                for (let y = 0; y < 15; y++) {
+                    // Buat tanah dasar
+                    if (y === 14) {
+                        newWorld.blocks[`${x},${y}`] = { type: 1 }; // Dirt Block
+                    } else if (y === 13) {
+                        newWorld.blocks[`${x},${y}`] = { type: 2 }; // Grass Block
+                    } else {
+                        newWorld.blocks[`${x},${y}`] = { type: 0 }; // Kosong
+                    }
+                }
+            }
+            
+            database.ref('worlds/' + domain).set(newWorld)
+                .then(() => {
+                    // Tambah dunia ke daftar dunia user
+                    database.ref('users/' + currentUser.username + '/worlds/' + domain).set({
+                        domain: domain,
+                        name: name,
+                        created: new Date().toISOString()
+                    });
+                    
+                    currentWorld = newWorld;
+                    currentWorld.domain = domain;
+                    
+                    document.getElementById('current-world').textContent = currentWorld.name + ' (' + domain + ')';
+                    renderWorld();
+                    
+                    // Refresh daftar dunia
+                    loadUserWorlds();
+                });
+        }
+        
+        // Fungsi untuk merender dunia
+        function renderWorld() {
+            const worldGrid = document.getElementById('world-grid');
+            worldGrid.innerHTML = '';
+            
+            for (let y = 0; y < 15; y++) {
+                for (let x = 0; x < 20; x++) {
+                    const blockKey = `${x},${y}`;
+                    const blockData = currentWorld.blocks[blockKey];
+                    const blockType = blockData ? blockData.type : 0;
+                    
+                    const blockElement = document.createElement('div');
+                    blockElement.className = 'block';
+                    blockElement.dataset.x = x;
+                    blockElement.dataset.y = y;
+                    
+                    if (blockType > 0 && blockType <= blocks.length) {
+                        blockElement.textContent = blocks[blockType - 1].emoji;
+                        blockElement.title = blocks[blockType - 1].nameId;
+                    } else {
+                        blockElement.style.background = 'rgba(255, 255, 255, 0.05)';
+                    }
+                    
+                    // Hanya pemilik yang bisa mengedit
+                    if (currentWorld.owner === currentUser.username) {
+                        blockElement.addEventListener('click', function() {
+                            placeBlock(x, y);
+                        });
+                    }
+                    
+                    worldGrid.appendChild(blockElement);
+                }
+            }
+        }
+        
+        // Fungsi untuk menempatkan blok
+        function placeBlock(x, y) {
+            if (currentWorld.owner !== currentUser.username) return;
+            
+            const blockKey = `${x},${y}`;
+            
+            // Update di Firebase
+            database.ref('worlds/' + currentWorld.domain + '/blocks/' + blockKey).set({
+                type: selectedBlock.id
+            }).then(() => {
+                // Update lokal
+                if (!currentWorld.blocks) currentWorld.blocks = {};
+                currentWorld.blocks[blockKey] = { type: selectedBlock.id };
+                
+                // Update tampilan
+                const blockElement = document.querySelector(`.block[data-x="${x}"][data-y="${y}"]`);
+                blockElement.textContent = selectedBlock.emoji;
+                blockElement.title = selectedBlock.nameId;
+                blockElement.style.background = '';
+            });
+        }
+        
+        // Fungsi untuk mengisi inventory
+        function populateInventory() {
+            const inventory = document.getElementById('inventory');
+            inventory.innerHTML = '';
+            
+            blocks.forEach(block => {
+                const item = document.createElement('div');
+                item.className = 'inventory-item';
+                if (block.id === selectedBlock.id) {
+                    item.classList.add('active');
+                }
+                
+                item.innerHTML = `
+                    <div class="item-icon">${block.emoji}</div>
+                    <div class="item-name">${block.nameId}</div>
+                `;
+                
+                item.addEventListener('click', function() {
+                    selectedBlock = block;
+                    
+                    // Hapus class active dari semua item
+                    document.querySelectorAll('.inventory-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    
+                    // Tambah class active ke item yang diklik
+                    this.classList.add('active');
+                });
+                
+                inventory.appendChild(item);
+            });
+        }
+        
+        // Event Listeners
+        document.getElementById('create-world-btn').addEventListener('click', function() {
+            document.getElementById('create-world-modal').style.display = 'flex';
+        });
+        
+        document.getElementById('cancel-create').addEventListener('click', function() {
+            document.getElementById('create-world-modal').style.display = 'none';
+        });
+        
+        document.getElementById('confirm-create').addEventListener('click', function() {
+            const domain = document.getElementById('world-domain').value;
+            const name = document.getElementById('world-name').value;
+            
+            if (!domain || !name) {
+                alert('Domain dan nama dunia harus diisi!');
+                return;
+            }
+            
+            // Cek apakah domain sudah ada
+            database.ref('worlds/' + domain).once('value').then(snapshot => {
+                if (snapshot.exists()) {
+                    alert('Domain sudah digunakan! Pilih domain lain.');
+                } else {
+                    createNewWorld(domain, name);
+                    document.getElementById('create-world-modal').style.display = 'none';
+                    document.getElementById('world-domain').value = '';
+                    document.getElementById('world-name').value = '';
+                }
+            });
+        });
+        
+        document.getElementById('logout-btn').addEventListener('click', function() {
+            localStorage.removeItem('uvoworld_user');
+            window.location.href = 'login.html';
+        });
+        
+        // Jalankan saat halaman dimuat
+        window.onload = function() {
+            loadUserData();
+            populateInventory();
+            
+            // Set resources acak untuk demo
+            document.getElementById('gem-count').textContent = Math.floor(Math.random() * 1000);
+            document.getElementById('coin-count').textContent = Math.floor(Math.random() * 500);
+        };
+    </script>
+</body>
+</html>
