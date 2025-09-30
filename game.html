@@ -113,6 +113,7 @@
             transition: all 0.3s ease;
             text-align: center;
             margin-bottom: 10px;
+            width: 100%;
         }
         
         .btn:hover {
@@ -181,6 +182,35 @@
             display: block;
         }
         
+        /* Controls */
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+        
         /* Inventory */
         .inventory {
             background: rgba(0, 0, 0, 0.7);
@@ -193,8 +223,8 @@
         }
         
         .inventory-item {
-            min-width: 60px;
-            height: 60px;
+            min-width: 70px;
+            height: 70px;
             background: rgba(255, 255, 255, 0.1);
             border-radius: 10px;
             display: flex;
@@ -204,6 +234,7 @@
             cursor: pointer;
             transition: all 0.3s ease;
             padding: 5px;
+            position: relative;
         }
         
         .inventory-item:hover {
@@ -217,13 +248,28 @@
         }
         
         .item-icon {
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             margin-bottom: 5px;
         }
         
         .item-name {
             font-size: 0.7rem;
             text-align: center;
+        }
+        
+        .item-count {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
         }
         
         /* Modal */
@@ -304,6 +350,28 @@
         .fade-in {
             animation: fadeIn 0.5s ease;
         }
+        
+        /* Online Players */
+        .online-players {
+            margin-top: 10px;
+        }
+        
+        .player {
+            display: flex;
+            align-items: center;
+            padding: 5px;
+            margin-bottom: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+        }
+        
+        .player-avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4CAF50;
+            margin-right: 8px;
+        }
     </style>
 </head>
 <body>
@@ -327,7 +395,9 @@
             
             <div class="section">
                 <div class="section-title">Pemain Online</div>
-                <div id="online-players">Memuat...</div>
+                <div class="online-players" id="online-players">
+                    <!-- Daftar pemain online akan diisi oleh JavaScript -->
+                </div>
             </div>
             
             <button class="btn btn-logout" id="logout-btn">Keluar</button>
@@ -351,6 +421,11 @@
             
             <div class="game-world">
                 <canvas id="game-canvas"></canvas>
+                <div class="controls">
+                    <button class="control-btn" id="jump-btn">↑</button>
+                    <button class="control-btn" id="left-btn">←</button>
+                    <button class="control-btn" id="right-btn">→</button>
+                </div>
             </div>
             
             <div class="inventory" id="inventory">
@@ -404,7 +479,26 @@
             { id: 8, name: "Snow Block", nameId: "Salju", emoji: "⬜", color: "#F0F8FF" },
             { id: 9, name: "Cloud Block", nameId: "Awan", emoji: "☁️", color: "#F5F5F5" },
             { id: 10, name: "Brick Block", nameId: "Bata", emoji: "🧱", color: "#B22222" },
-            // ... (sisanya bisa ditambahkan kemudian)
+            { id: 11, name: "Coal Block", nameId: "Batu bara", emoji: "⬛", color: "#2F4F4F" },
+            { id: 12, name: "Iron Block", nameId: "Besi", emoji: "⚪", color: "#C0C0C0" },
+            { id: 13, name: "Gold Block", nameId: "Emas", emoji: "🟨", color: "#FFD700" },
+            { id: 14, name: "Diamond Block", nameId: "Berlian", emoji: "💎", color: "#00FFFF" },
+            { id: 15, name: "Emerald Block", nameId: "Zamrud", emoji: "🟢", color: "#00FF00" },
+            { id: 16, name: "Ruby Block", nameId: "Ruby merah", emoji: "🔴", color: "#FF0000" },
+            { id: 17, name: "Amethyst Block", nameId: "Batu ungu", emoji: "🟪", color: "#8A2BE2" },
+            { id: 18, name: "Obsidian Block", nameId: "Obsidian", emoji: "⬛", color: "#191970" },
+            { id: 19, name: "Crystal Block", nameId: "Kristal", emoji: "✨", color: "#E6E6FA" },
+            { id: 20, name: "Light Block", nameId: "Blok bercahaya", emoji: "🌟", color: "#FFFF00" },
+            { id: 21, name: "Wood Block", nameId: "Kayu dasar", emoji: "🟤", color: "#8B4513" },
+            { id: 22, name: "Oak Plank Block", nameId: "Papan ek", emoji: "🟫", color: "#A0522D" },
+            { id: 23, name: "Pine Plank Block", nameId: "Papan pinus", emoji: "🟤", color: "#8B4513" },
+            { id: 24, name: "Bamboo Block", nameId: "Bambu", emoji: "🟩", color: "#006400" },
+            { id: 25, name: "Leaf Block", nameId: "Daun", emoji: "🟢", color: "#32CD32" },
+            { id: 26, name: "Mushroom Block", nameId: "Jamur", emoji: "🍄", color: "#FF69B4" },
+            { id: 27, name: "Pumpkin Block", nameId: "Labu", emoji: "🎃", color: "#FF8C00" },
+            { id: 28, name: "Melon Block", nameId: "Semangka", emoji: "🍉", color: "#90EE90" },
+            { id: 29, name: "Wheat Block", nameId: "Gandum", emoji: "🌾", color: "#F0E68C" },
+            { id: 30, name: "Cactus Block", nameId: "Kaktus", emoji: "🌵", color: "#9ACD32" }
         ];
         
         // Variabel global
@@ -412,24 +506,30 @@
         let currentWorld = null;
         let selectedBlock = blocks[0];
         let userWorlds = [];
-        let players = {};
+        let userInventory = {};
+        let onlinePlayers = {};
         
         // Konstanta game
-        const BLOCK_SIZE = 32;
-        const WORLD_WIDTH = 100;
-        const WORLD_HEIGHT = 100;
+        const BLOCK_SIZE = 40;
+        const PLAYER_SIZE = 30;
+        const GRAVITY = 0.5;
+        const JUMP_FORCE = -10;
         
         // Variabel game
         let canvas, ctx;
         let camera = { x: 0, y: 0 };
         let keys = {};
         let player = {
-            x: 0,
-            y: 0,
-            width: 24,
-            height: 32,
-            speed: 3,
-            color: '#FF0000'
+            x: 100,
+            y: 100,
+            width: PLAYER_SIZE,
+            height: PLAYER_SIZE,
+            velocityX: 0,
+            velocityY: 0,
+            speed: 5,
+            isJumping: false,
+            color: '#FF0000',
+            facing: 'right'
         };
         
         // Fungsi untuk memuat data user
@@ -448,8 +548,26 @@
             // Inisialisasi game
             initGame();
             
-            // Memuat dunia user
-            loadUserWorlds();
+            // Memuat data user dari Firebase
+            loadUserFromFirebase();
+        }
+        
+        // Memuat data user dari Firebase
+        function loadUserFromFirebase() {
+            database.ref('users/' + currentUser.username).on('value', snapshot => {
+                if (snapshot.exists()) {
+                    const userData = snapshot.val();
+                    document.getElementById('gem-count').textContent = userData.gems || 0;
+                    document.getElementById('coin-count').textContent = userData.coins || 0;
+                    userInventory = userData.inventory || {};
+                    
+                    // Update inventory display
+                    updateInventoryDisplay();
+                    
+                    // Memuat dunia user
+                    loadUserWorlds();
+                }
+            });
         }
         
         // Inisialisasi game
@@ -464,21 +582,42 @@
             // Event listener untuk keyboard
             window.addEventListener('keydown', function(e) {
                 keys[e.key] = true;
+                
+                // Space untuk melompat
+                if (e.key === ' ' || e.key === 'Spacebar') {
+                    e.preventDefault();
+                    jump();
+                }
             });
             
             window.addEventListener('keyup', function(e) {
                 keys[e.key] = false;
             });
             
-            // Event listener untuk klik canvas (menempatkan blok)
+            // Event listener untuk kontrol tombol
+            document.getElementById('jump-btn').addEventListener('click', jump);
+            document.getElementById('left-btn').addEventListener('click', () => moveLeft());
+            document.getElementById('right-btn').addEventListener('click', () => moveRight());
+            
+            // Event listener untuk klik canvas (menempatkan/menghancurkan blok)
             canvas.addEventListener('click', function(e) {
-                if (currentWorld.owner !== currentUser.username) return;
-                
                 const rect = canvas.getBoundingClientRect();
                 const x = Math.floor((e.clientX - rect.left + camera.x) / BLOCK_SIZE);
                 const y = Math.floor((e.clientY - rect.top + camera.y) / BLOCK_SIZE);
                 
-                placeBlock(x, y);
+                // Cek apakah pemain memiliki blok yang dipilih
+                if (selectedBlock && userInventory[selectedBlock.id] > 0) {
+                    placeBlock(x, y);
+                }
+            });
+            
+            canvas.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const x = Math.floor((e.clientX - rect.left + camera.x) / BLOCK_SIZE);
+                const y = Math.floor((e.clientY - rect.top + camera.y) / BLOCK_SIZE);
+                
+                breakBlock(x, y);
             });
             
             // Mulai game loop
@@ -501,41 +640,109 @@
         
         // Update game state
         function update() {
-            // Gerakkan pemain
-            let moved = false;
-            if (keys['ArrowUp'] || keys['w'] || keys['W']) {
-                player.y -= player.speed;
-                moved = true;
-            }
-            if (keys['ArrowDown'] || keys['s'] || keys['S']) {
-                player.y += player.speed;
-                moved = true;
-            }
+            // Gerakkan pemain berdasarkan input
             if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
-                player.x -= player.speed;
-                moved = true;
+                moveLeft();
             }
             if (keys['ArrowRight'] || keys['d'] || keys['D']) {
-                player.x += player.speed;
-                moved = true;
+                moveRight();
             }
             
-            // Batasi pemain dalam dunia
-            player.x = Math.max(0, Math.min(player.x, WORLD_WIDTH * BLOCK_SIZE - player.width));
-            player.y = Math.max(0, Math.min(player.y, WORLD_HEIGHT * BLOCK_SIZE - player.height));
+            // Terapkan gravitasi
+            player.velocityY += GRAVITY;
+            player.y += player.velocityY;
+            
+            // Deteksi tabrakan dengan blok
+            checkCollisions();
             
             // Update kamera untuk mengikuti pemain
             camera.x = player.x - canvas.width / 2 + player.width / 2;
             camera.y = player.y - canvas.height / 2 + player.height / 2;
             
             // Batasi kamera dalam dunia
-            camera.x = Math.max(0, Math.min(camera.x, WORLD_WIDTH * BLOCK_SIZE - canvas.width));
-            camera.y = Math.max(0, Math.min(camera.y, WORLD_HEIGHT * BLOCK_SIZE - canvas.height));
+            const worldWidth = 100 * BLOCK_SIZE;
+            const worldHeight = 50 * BLOCK_SIZE;
+            camera.x = Math.max(0, Math.min(camera.x, worldWidth - canvas.width));
+            camera.y = Math.max(0, Math.min(camera.y, worldHeight - canvas.height));
             
-            // Jika pemain bergerak, update posisi di Firebase
-            if (moved && currentWorld) {
-                updatePlayerPosition();
+            // Update posisi pemain di Firebase
+            updatePlayerPosition();
+        }
+        
+        // Fungsi gerak
+        function moveLeft() {
+            player.velocityX = -player.speed;
+            player.facing = 'left';
+        }
+        
+        function moveRight() {
+            player.velocityX = player.speed;
+            player.facing = 'right';
+        }
+        
+        function jump() {
+            if (!player.isJumping) {
+                player.velocityY = JUMP_FORCE;
+                player.isJumping = true;
             }
+        }
+        
+        // Deteksi tabrakan
+        function checkCollisions() {
+            if (!currentWorld || !currentWorld.blocks) return;
+            
+            // Reset velocity X jika tidak ada input
+            if (!keys['ArrowLeft'] && !keys['a'] && !keys['A'] && 
+                !keys['ArrowRight'] && !keys['d'] && !keys['D']) {
+                player.velocityX = 0;
+            }
+            
+            // Posisi pemain dalam grid
+            const playerLeft = Math.floor(player.x / BLOCK_SIZE);
+            const playerRight = Math.floor((player.x + player.width) / BLOCK_SIZE);
+            const playerTop = Math.floor(player.y / BLOCK_SIZE);
+            const playerBottom = Math.floor((player.y + player.height) / BLOCK_SIZE);
+            
+            // Cek tabrakan dengan blok
+            let onGround = false;
+            
+            for (let x = playerLeft; x <= playerRight; x++) {
+                for (let y = playerTop; y <= playerBottom; y++) {
+                    const blockKey = `${x},${y}`;
+                    if (currentWorld.blocks[blockKey] && currentWorld.blocks[blockKey].type) {
+                        const block = blocks.find(b => b.id === currentWorld.blocks[blockKey].type);
+                        
+                        // Tabrakan vertikal
+                        if (player.velocityY > 0 && y === playerTop + 1) {
+                            player.y = y * BLOCK_SIZE - player.height;
+                            player.velocityY = 0;
+                            player.isJumping = false;
+                            onGround = true;
+                        } else if (player.velocityY < 0 && y === playerTop - 1) {
+                            player.y = (y + 1) * BLOCK_SIZE;
+                            player.velocityY = 0;
+                        }
+                        
+                        // Tabrakan horizontal
+                        if (player.velocityX > 0 && x === playerLeft + 1) {
+                            player.x = x * BLOCK_SIZE - player.width;
+                            player.velocityX = 0;
+                        } else if (player.velocityX < 0 && x === playerLeft - 1) {
+                            player.x = (x + 1) * BLOCK_SIZE;
+                            player.velocityX = 0;
+                        }
+                    }
+                }
+            }
+            
+            // Jika tidak ada tabrakan dengan tanah, pemain sedang melompat
+            if (!onGround) {
+                player.isJumping = true;
+            }
+            
+            // Batasi pemain dalam dunia
+            player.x = Math.max(0, Math.min(player.x, worldWidth - player.width));
+            player.y = Math.max(0, Math.min(player.y, worldHeight - player.height));
         }
         
         // Render game
@@ -590,10 +797,28 @@
                 player.height
             );
             
+            // Gambar mata pemain berdasarkan arah
+            ctx.fillStyle = 'white';
+            if (player.facing === 'right') {
+                ctx.fillRect(
+                    player.x - camera.x + player.width - 10,
+                    player.y - camera.y + 8,
+                    5,
+                    5
+                );
+            } else {
+                ctx.fillRect(
+                    player.x - camera.x + 5,
+                    player.y - camera.y + 8,
+                    5,
+                    5
+                );
+            }
+            
             // Gambar pemain lain
-            for (const username in players) {
+            for (const username in onlinePlayers) {
                 if (username !== currentUser.username) {
-                    const otherPlayer = players[username];
+                    const otherPlayer = onlinePlayers[username];
                     ctx.fillStyle = '#00FF00'; // Warna hijau untuk pemain lain
                     ctx.fillRect(
                         otherPlayer.x - camera.x,
@@ -686,7 +911,8 @@
                     
                     // Listen untuk pemain lain di dunia ini
                     database.ref('players').orderByChild('world').equalTo(domain).on('value', snapshot => {
-                        players = snapshot.val() || {};
+                        onlinePlayers = snapshot.val() || {};
+                        updateOnlinePlayersDisplay();
                     });
                 } else {
                     // Jika dunia tidak ditemukan, buat dunia baru
@@ -708,14 +934,25 @@
             };
             
             // Buat tanah dasar
-            for (let x = 0; x < WORLD_WIDTH; x++) {
-                for (let y = WORLD_HEIGHT - 10; y < WORLD_HEIGHT; y++) {
-                    if (y === WORLD_HEIGHT - 10) {
+            for (let x = 0; x < 100; x++) {
+                for (let y = 40; y < 50; y++) {
+                    if (y === 40) {
                         newWorld.blocks[`${x},${y}`] = { type: 2 }; // Grass Block
                     } else {
                         newWorld.blocks[`${x},${y}`] = { type: 1 }; // Dirt Block
                     }
                 }
+            }
+            
+            // Tambah beberapa pohon
+            for (let i = 0; i < 5; i++) {
+                const treeX = 10 + i * 15;
+                newWorld.blocks[`${treeX},39`] = { type: 21 }; // Wood Block
+                newWorld.blocks[`${treeX},38`] = { type: 21 }; // Wood Block
+                newWorld.blocks[`${treeX},37`] = { type: 25 }; // Leaf Block
+                newWorld.blocks[`${treeX-1},37`] = { type: 25 }; // Leaf Block
+                newWorld.blocks[`${treeX+1},37`] = { type: 25 }; // Leaf Block
+                newWorld.blocks[`${treeX},36`] = { type: 25 }; // Leaf Block
             }
             
             database.ref('worlds/' + domain).set(newWorld)
@@ -739,23 +976,72 @@
         
         // Fungsi untuk menempatkan blok
         function placeBlock(x, y) {
-            if (currentWorld.owner !== currentUser.username) return;
+            if (!currentWorld || !selectedBlock) return;
+            
+            // Hanya pemilik yang bisa mengedit, atau siapa saja jika dunia publik
+            if (currentWorld.owner !== currentUser.username && !currentWorld.isPublic) {
+                return;
+            }
             
             const blockKey = `${x},${y}`;
+            
+            // Cek apakah pemain memiliki blok yang cukup
+            if (userInventory[selectedBlock.id] <= 0) {
+                alert('Anda tidak memiliki blok ini!');
+                return;
+            }
             
             // Update di Firebase
             database.ref('worlds/' + currentWorld.domain + '/blocks/' + blockKey).set({
                 type: selectedBlock.id
             }).then(() => {
+                // Update inventory
+                userInventory[selectedBlock.id]--;
+                database.ref('users/' + currentUser.username + '/inventory/' + selectedBlock.id).set(userInventory[selectedBlock.id]);
+                
                 // Update lokal
                 if (!currentWorld.blocks) currentWorld.blocks = {};
                 currentWorld.blocks[blockKey] = { type: selectedBlock.id };
+                
+                // Update tampilan inventory
+                updateInventoryDisplay();
             });
+        }
+        
+        // Fungsi untuk menghancurkan blok
+        function breakBlock(x, y) {
+            if (!currentWorld) return;
+            
+            // Hanya pemilik yang bisa mengedit, atau siapa saja jika dunia publik
+            if (currentWorld.owner !== currentUser.username && !currentWorld.isPublic) {
+                return;
+            }
+            
+            const blockKey = `${x},${y}`;
+            const blockData = currentWorld.blocks[blockKey];
+            
+            if (blockData && blockData.type) {
+                // Tambah blok ke inventory
+                if (!userInventory[blockData.type]) {
+                    userInventory[blockData.type] = 0;
+                }
+                userInventory[blockData.type]++;
+                
+                // Update di Firebase
+                database.ref('users/' + currentUser.username + '/inventory/' + blockData.type).set(userInventory[blockData.type]);
+                database.ref('worlds/' + currentWorld.domain + '/blocks/' + blockKey).remove();
+                
+                // Update lokal
+                delete currentWorld.blocks[blockKey];
+                
+                // Update tampilan inventory
+                updateInventoryDisplay();
+            }
         }
         
         // Update posisi pemain di Firebase
         function updatePlayerPosition() {
-            if (!currentWorld) return;
+            if (!currentWorld || !currentUser) return;
             
             database.ref('players/' + currentUser.username).set({
                 x: player.x,
@@ -765,37 +1051,74 @@
             });
         }
         
+        // Update tampilan pemain online
+        function updateOnlinePlayersDisplay() {
+            const onlinePlayersEl = document.getElementById('online-players');
+            onlinePlayersEl.innerHTML = '';
+            
+            for (const username in onlinePlayers) {
+                const playerEl = document.createElement('div');
+                playerEl.className = 'player';
+                
+                const avatarEl = document.createElement('div');
+                avatarEl.className = 'player-avatar';
+                
+                const nameEl = document.createElement('span');
+                nameEl.textContent = username;
+                
+                playerEl.appendChild(avatarEl);
+                playerEl.appendChild(nameEl);
+                onlinePlayersEl.appendChild(playerEl);
+            }
+            
+            if (Object.keys(onlinePlayers).length === 0) {
+                onlinePlayersEl.innerHTML = '<div>Tidak ada pemain online</div>';
+            }
+        }
+        
         // Fungsi untuk mengisi inventory
-        function populateInventory() {
+        function updateInventoryDisplay() {
             const inventory = document.getElementById('inventory');
             inventory.innerHTML = '';
             
             blocks.forEach(block => {
-                const item = document.createElement('div');
-                item.className = 'inventory-item';
-                if (block.id === selectedBlock.id) {
-                    item.classList.add('active');
-                }
-                
-                item.innerHTML = `
-                    <div class="item-icon">${block.emoji}</div>
-                    <div class="item-name">${block.nameId}</div>
-                `;
-                
-                item.addEventListener('click', function() {
-                    selectedBlock = block;
+                if (userInventory[block.id] > 0) {
+                    const item = document.createElement('div');
+                    item.className = 'inventory-item';
+                    if (block.id === selectedBlock.id) {
+                        item.classList.add('active');
+                    }
                     
-                    // Hapus class active dari semua item
-                    document.querySelectorAll('.inventory-item').forEach(item => {
-                        item.classList.remove('active');
+                    item.innerHTML = `
+                        <div class="item-icon">${block.emoji}</div>
+                        <div class="item-name">${block.nameId}</div>
+                        <div class="item-count">${userInventory[block.id]}</div>
+                    `;
+                    
+                    item.addEventListener('click', function() {
+                        selectedBlock = block;
+                        
+                        // Hapus class active dari semua item
+                        document.querySelectorAll('.inventory-item').forEach(item => {
+                            item.classList.remove('active');
+                        });
+                        
+                        // Tambah class active ke item yang diklik
+                        this.classList.add('active');
                     });
                     
-                    // Tambah class active ke item yang diklik
-                    this.classList.add('active');
-                });
-                
-                inventory.appendChild(item);
+                    inventory.appendChild(item);
+                }
             });
+            
+            // Jika tidak ada item yang dipilih, pilih item pertama yang tersedia
+            if (!selectedBlock || userInventory[selectedBlock.id] <= 0) {
+                const firstAvailable = blocks.find(block => userInventory[block.id] > 0);
+                if (firstAvailable) {
+                    selectedBlock = firstAvailable;
+                    updateInventoryDisplay();
+                }
+            }
         }
         
         // Event Listeners
@@ -863,11 +1186,10 @@
         // Jalankan saat halaman dimuat
         window.onload = function() {
             loadUserData();
-            populateInventory();
             
-            // Set resources acak untuk demo
-            document.getElementById('gem-count').textContent = Math.floor(Math.random() * 1000);
-            document.getElementById('coin-count').textContent = Math.floor(Math.random() * 500);
+            // Set ukuran dunia
+            worldWidth = 100 * BLOCK_SIZE;
+            worldHeight = 50 * BLOCK_SIZE;
         };
         
         // Hapus data pemain saat tab ditutup
