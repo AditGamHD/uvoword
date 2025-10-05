@@ -10,6 +10,10 @@
     .row{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
     button{padding:10px;border-radius:8px;border:none;background:#0b84ff;color:#fff;cursor:pointer}
     .muted{color:#9aa0a6}
+    .seg{display:flex;gap:8px;margin-top:12px}
+    .seg button{flex:1;padding:10px;background:transparent;border:1px solid rgba(255,255,255,0.06);}
+    input{width:100%;padding:10px;margin-top:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:#161718;color:#fff}
+    .small{font-size:13px;color:#9aa0a6;margin-top:8px}
   </style>
 </head>
 <body>
@@ -17,11 +21,29 @@
     <h2>Lobby — UvoWorld</h2>
     <div>Username: <strong id="uName">-</strong></div>
     <div class="row"><div>Coin</div><div id="uCoin">0</div></div>
-    <div class="row" style="margin-top:18px">
-      <button id="btnStart">Start Game</button>
-      <button id="btnLogout" style="background:transparent;border:1px solid rgba(255,255,255,0.06)">Logout</button>
+
+    <div class="small">Pilih mode:</div>
+    <div class="seg" style="margin-top:8px">
+      <button id="optGlobal">Global Map</button>
+      <button id="optRoom">Room Map</button>
     </div>
-    <div style="margin-top:12px" class="muted">Klik Start Game untuk masuk ke game. Map hanya 1 — pemain lain yang online akan muncul di sana.</div>
+
+    <div id="roomPanel" style="display:none;margin-top:10px">
+      <label style="font-size:13px;color:#9aa0a6">Nama Room</label>
+      <input id="roomName" placeholder="contoh: room-1 atau funroom" />
+      <div class="row" style="margin-top:10px">
+        <button id="btnCreate">Buat Room</button>
+        <button id="btnJoin" style="background:transparent;border:1px solid rgba(255,255,255,0.06)">Gabung Room</button>
+      </div>
+      <div class="small">Catatan: nama room case-insensitive. Jika room tidak ada, buat room baru.</div>
+    </div>
+
+    <div style="margin-top:14px" class="row">
+      <button id="btnStart" style="flex:1;background:#0b84ff">Start Game</button>
+      <button id="btnLogout" style="margin-left:8px;background:transparent;border:1px solid rgba(255,255,255,0.06)">Logout</button>
+    </div>
+
+    <div style="margin-top:12px" class="muted">Global = semua pemain masuk 1 world. Room = private room (hanya pemain yang join room itu).</div>
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -30,6 +52,7 @@
     const firebaseConfig = { databaseURL: "https://uvoword-default-rtdb.asia-southeast1.firebasedatabase.app" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+
     const u = localStorage.getItem('uvo_user');
     if(!u){ location.href = 'index.html'; throw new Error('no user'); }
     document.getElementById('uName').textContent = u;
@@ -39,13 +62,78 @@
       if(snap.exists()) document.getElementById('uCoin').textContent = snap.val();
     });
 
-    document.getElementById('btnStart').addEventListener('click', ()=>{
-      // go to game
+    // UI
+    const optGlobal = document.getElementById('optGlobal');
+    const optRoom = document.getElementById('optRoom');
+    const roomPanel = document.getElementById('roomPanel');
+    const roomNameInput = document.getElementById('roomName');
+
+    let selectedMode = localStorage.getItem('uvo_mode') || 'global';
+    function setMode(m){
+      selectedMode = m;
+      localStorage.setItem('uvo_mode', m);
+      if(m === 'room') roomPanel.style.display = 'block'; else roomPanel.style.display = 'none';
+      optGlobal.style.border = (m==='global')? '2px solid #0b84ff' : '1px solid rgba(255,255,255,0.06)';
+      optRoom.style.border = (m==='room')? '2px solid #0b84ff' : '1px solid rgba(255,255,255,0.06)';
+    }
+    setMode(selectedMode);
+
+    optGlobal.addEventListener('click', ()=> setMode('global'));
+    optRoom.addEventListener('click', ()=> setMode('room'));
+
+    document.getElementById('btnCreate').addEventListener('click', async ()=>{
+      const rn = (roomNameInput.value || '').trim();
+      if(!rn){ alert('Isi nama room'); return; }
+      const rkey = rn.toLowerCase();
+      // create room meta if not exists
+      const roomRef = db.ref('rooms/' + rkey + '/meta');
+      const snap = await roomRef.get();
+      if(!snap.exists()){
+        await roomRef.set({ createdBy: u, createdAt: firebase.database.ServerValue.TIMESTAMP, name: rn });
+      }
+      localStorage.setItem('uvo_mode','room');
+      localStorage.setItem('uvo_room', rkey);
       location.href = 'game.html';
     });
-    document.getElementById('btnLogout').addEventListener('click', ()=>{
-      localStorage.removeItem('uvo_user'); location.href = 'index.html';
+
+    document.getElementById('btnJoin').addEventListener('click', async ()=>{
+      const rn = (roomNameInput.value || '').trim();
+      if(!rn){ alert('Isi nama room'); return; }
+      const rkey = rn.toLowerCase();
+      // if room not exists, create it (simple UX)
+      const roomRef = db.ref('rooms/' + rkey + '/meta');
+      const snap = await roomRef.get();
+      if(!snap.exists()){
+        await roomRef.set({ createdBy: u, createdAt: firebase.database.ServerValue.TIMESTAMP, name: rn });
+      }
+      localStorage.setItem('uvo_mode','room');
+      localStorage.setItem('uvo_room', rkey);
+      location.href = 'game.html';
     });
+
+    document.getElementById('btnStart').addEventListener('click', ()=>{
+      const mode = localStorage.getItem('uvo_mode') || 'global';
+      if(mode === 'room'){
+        const rn = (roomNameInput.value || '').trim();
+        if(!rn){
+          alert('Masukkan nama room untuk mode Room, atau pilih Global');
+          return;
+        }
+        localStorage.setItem('uvo_room', rn.toLowerCase());
+      } else {
+        localStorage.removeItem('uvo_room');
+      }
+      location.href = 'game.html';
+    });
+
+    document.getElementById('btnLogout').addEventListener('click', ()=>{
+      localStorage.removeItem('uvo_user'); localStorage.removeItem('uvo_mode'); localStorage.removeItem('uvo_room');
+      location.href = 'index.html';
+    });
+
+    // quick fill room input from previous
+    const lastRoom = localStorage.getItem('uvo_room');
+    if(lastRoom) roomNameInput.value = lastRoom;
   </script>
 </body>
 </html>
