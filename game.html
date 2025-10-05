@@ -1,219 +1,574 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, maximum-scale=1.0, user-scalable=no" />
-  <title>UvoWorld Game</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <meta name="theme-color" content="#1e1f22"> <!-- browser UI warna mengikuti game -->
+  <title>UvoWorld — Play</title>
+
   <style>
-    *{margin:0;padding:0;box-sizing:border-box;user-select:none;}
-    html,body{width:100%;height:100%;background:#1e1f22;font-family:Poppins, sans-serif;overflow:hidden;}
-    canvas{background:linear-gradient(to top,#2e2f33,#3d3f44);display:block;width:100%;height:100%;}
-
-    /* ========= OVERLAY ROTATE ========= */
-    #rotate-alert{
-      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-      background:#000;color:white;flex-direction:column;z-index:10000;
+    /* ================== RESET & SAFETY ================== */
+    :root{
+      --bg-1:#16171a;
+      --bg-2:#2e3136;
+      --accent:#0b84ff;
+      --panel:#222326;
+      --muted:#8a8d90;
+      --hud-height:64px;
+      --btn-size:74px;
     }
-    #rotate-alert.hidden{display:none;}
-    #rotate-alert button{
-      background:#0b84ff;color:#fff;border:none;border-radius:8px;
-      padding:10px 18px;margin-top:15px;box-shadow:0 0 15px #0b84ff;
-      font-weight:600;cursor:pointer;transition:.3s;
-    }
-    #rotate-alert button:hover{background:#006fe6;}
+    *{box-sizing:border-box}
+    html,body{height:100%;width:100%;margin:0;padding:0;touch-action:none;overscroll-behavior:none;background:var(--bg-1);color:#fff;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
+    img,canvas{user-select:none;-webkit-user-drag:none}
 
-    /* ========= HUD ========= */
+    /* Prevent page scroll */
+    body,html{overflow:hidden}
+
+    /* ========= CANVAS ========= */
+    #gameWrap{position:fixed;inset:0;display:flex;align-items:stretch;justify-content:stretch}
+    #gameCanvas{width:100%;height:100%;display:block;background:linear-gradient(180deg,var(--bg-2),#43474b)}
+
+    /* ========= ROTATE / FULLSCREEN OVERLAY ========= */
+    #rotateOverlay{
+      position:fixed;inset:0;background:rgba(8,8,10,0.95);z-index:9999;display:flex;
+      align-items:center;justify-content:center;flex-direction:column;gap:18px;padding:24px;text-align:center;
+      transition:opacity .25s ease;
+    }
+    #rotateOverlay.hidden{opacity:0;pointer-events:none}
+    .rotate-card{
+      background:linear-gradient(180deg,#0f1113,#151619);
+      padding:22px;border-radius:14px;border:1px solid rgba(255,255,255,0.04);
+      box-shadow:0 10px 40px rgba(0,0,0,0.6);max-width:420px;width:100%;
+    }
+    .rotate-title{font-weight:700;font-size:18px;margin-bottom:6px}
+    .rotate-desc{color:var(--muted);font-size:14px;margin-bottom:12px}
+
+    /* Animated device icon */
+    .device-icon{
+      width:88px;height:88px;margin:0 auto 6px;display:block;animation:rotateFloat 1.6s ease-in-out infinite;
+    }
+    @keyframes rotateFloat{
+      0%{transform:translateY(0) rotate(0deg)}
+      50%{transform:translateY(-6px) rotate(-3deg)}
+      100%{transform:translateY(0) rotate(0deg)}
+    }
+    .rotate-actions{display:flex;gap:10px;justify-content:center}
+    .btn-ghost{
+      background:transparent;border:1px solid rgba(255,255,255,0.08);color:#fff;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600
+    }
+    .btn-primary{
+      background:var(--accent);border:none;color:#fff;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:700
+    }
+
+    /* ========= HUD TOP ========= */
     .hud{
-      position:fixed;top:10px;left:10px;right:10px;
-      display:flex;justify-content:space-between;align-items:center;
-      z-index:1000;
+      position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;z-index:800;pointer-events:none;
     }
-    .hp-bar{
-      width:150px;height:20px;background:#333;border-radius:20px;overflow:hidden;
-      box-shadow:0 0 10px rgba(0,0,0,.5);
+    .hp-wrap{pointer-events:auto}
+    .hp-box{
+      width:220px;height:36px;background:linear-gradient(90deg,#252528,#1e1f22);border-radius:20px;padding:4px;border:1px solid rgba(255,255,255,0.04);
+      display:flex;align-items:center;gap:10px;font-weight:600;color:#fff
     }
-    .hp-fill{
-      height:100%;width:100%;background:linear-gradient(90deg,#ff4747,#ff0000);
-      transition:width .3s;
-    }
-    .menu-bar{
-      background:#2e2e2e;border:1px solid #555;border-radius:10px;
-      color:white;padding:8px 15px;font-size:14px;font-weight:500;
-      box-shadow:0 0 10px rgba(0,0,0,.3);
+    .hp-bar {height:24px;background:#2b2b2c;border-radius:16px;overflow:hidden;width:140px}
+    .hp-fill{height:100%;background:linear-gradient(90deg,#ff6b6b,#ff2b2b);width:100%;transition:width .35s}
+    .menu-panel{
+      pointer-events:auto;background:linear-gradient(180deg,#212224,#1c1d1f);padding:8px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.04);display:flex;gap:10px;align-items:center;color:var(--muted)
     }
 
-    /* ========= KONTROL ========= */
-    .controls{
-      position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
-      width:100%;max-width:700px;display:flex;justify-content:space-between;
-      padding:0 20px;z-index:1000;
+    /* ========= CONTROLS BOTTOM (layout like image) ========= */
+    .controls-wrap{
+      position:fixed;inset:auto 0 18px 0;display:flex;justify-content:space-between;align-items:flex-end;padding:0 12px;z-index:900;pointer-events:none;
+      max-width:1200px;margin:0 auto;left:0;right:0;
     }
-    .left-controls,.right-controls{display:flex;gap:15px;}
-    .btn{
-      width:70px;height:70px;border-radius:50%;background:#222;
-      border:2px solid #555;display:flex;align-items:center;justify-content:center;
-      color:#fff;font-size:26px;box-shadow:0 0 10px rgba(0,0,0,.5);
-      transition:.2s;
-    }
-    .btn:active{background:#0b84ff;border-color:#0b84ff;transform:scale(.9);}
+    /* left corner buttons (at pojok kiri bawah) */
+    .left-corner{pointer-events:auto;padding:12px;display:flex;gap:10px;flex-direction:row;align-items:center}
+    .corner-btn{width:var(--btn-size);height:var(--btn-size);border-radius:12px;background:linear-gradient(180deg,#1b1c1e,#26272a);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.04);box-shadow:0 10px 30px rgba(0,0,0,0.6);cursor:pointer}
+    .corner-btn svg{width:36px;height:36px;opacity:0.95}
+
+    /* right corner: vertical stack (attack circular + vertical jump/crouch) */
+    .right-corner{pointer-events:auto;padding:12px;display:flex;gap:14px;flex-direction:column;align-items:flex-end}
+    .attack-circle{width:86px;height:86px;border-radius:999px;background:linear-gradient(180deg,var(--accent),#0569d6);display:flex;align-items:center;justify-content:center;border:2px solid rgba(0,0,0,0.25);box-shadow:0 12px 30px rgba(11,132,255,0.18);cursor:pointer}
+    .attack-circle svg{width:42px;height:42px;filter:drop-shadow(0 6px 14px rgba(11,132,255,0.18))}
+    .vert-stack{display:flex;flex-direction:column;gap:12px}
+    .vert-btn{width:62px;height:62px;border-radius:12px;background:linear-gradient(180deg,#252527,#1f2022);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.04);cursor:pointer}
+    .vert-btn svg{width:28px;height:28px;opacity:0.95}
+
+    /* Button press visuals */
+    .pressed{transform:translateY(2px) scale(.98);box-shadow:none;opacity:.95}
 
     /* ========= TOAST ========= */
-    #toast{
-      position:fixed;top:15px;left:50%;transform:translateX(-50%);
-      background:#0b84ff;color:white;padding:10px 20px;border-radius:8px;
-      opacity:0;pointer-events:none;transition:opacity .3s;z-index:2000;
-      box-shadow:0 0 20px rgba(11,132,255,.5);
+    #toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--accent);padding:10px 18px;border-radius:10px;color:#fff;z-index:1200;opacity:0;transition:opacity .3s}
+    #toast.show{opacity:1}
+
+    /* ========= RESPONSIVE ADJUSTMENTS ========= */
+    @media (max-width:700px){
+      .hp-box{width:170px}
+      .hp-bar{width:110px}
+      .attack-circle{width:76px;height:76px}
+      .attack-circle svg{width:36px;height:36px}
+      .corner-btn{width:56px;height:56px;border-radius:10px}
+      .vert-btn{width:56px;height:56px}
     }
-    #toast.show{opacity:1;}
   </style>
 </head>
 <body>
-
-<div id="rotate-alert">
-  <p>Silakan ubah ke mode <b>Landscape</b> untuk bermain!</p>
-  <button id="btnFullscreen">Aktifkan Fullscreen</button>
-</div>
-
-<canvas id="gameCanvas"></canvas>
-
-<!-- HUD -->
-<div class="hud">
-  <div class="hp-bar"><div class="hp-fill" id="hpFill"></div></div>
-  <div class="menu-bar">⚙️ Menu</div>
-</div>
-
-<!-- Kontrol -->
-<div class="controls">
-  <div class="left-controls">
-    <div class="btn" id="btnLeft">◀</div>
-    <div class="btn" id="btnRight">▶</div>
+  <div id="gameWrap">
+    <canvas id="gameCanvas" width="1280" height="720"></canvas>
   </div>
-  <div class="right-controls">
-    <div class="btn" id="btnJump">⤴</div>
-    <div class="btn" id="btnAttack">⚔</div>
-    <div class="btn" id="btnCrouch">⬇</div>
+
+  <!-- ROTATE / FULLSCREEN OVERLAY -->
+  <div id="rotateOverlay" aria-hidden="false">
+    <div class="rotate-card" role="dialog" aria-modal="true">
+      <svg class="device-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="8" y="8" width="48" height="48" rx="6" stroke="rgba(255,255,255,0.08)" fill="none" stroke-width="1.5"/>
+        <path d="M20 12v40" stroke="rgba(255,255,255,0.06)" stroke-width="1.2" />
+        <path d="M44 12v40" stroke="rgba(255,255,255,0.06)" stroke-width="1.2" />
+        <path d="M32 18v10" stroke="#fff" stroke-opacity="0.9" stroke-width="1.4" stroke-linecap="round"/>
+        <path d="M32 36c3-1.5 6-1.5 8 0" stroke="#fff" stroke-opacity="0.9" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+
+      <div class="rotate-title">Mohon rotasi device Anda</div>
+      <div class="rotate-desc">Game bekerja optimal pada orientasi landscape. Untuk pengalaman terbaik, aktifkan fullscreen dan putar perangkat ke landscape.</div>
+
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button id="btnFullLock" class="btn-primary">Aktifkan Fullscreen & Lock</button>
+        <button id="btnDismiss" class="btn-ghost">Saya Sudah</button>
+      </div>
+    </div>
   </div>
-</div>
 
-<div id="toast">Selamat datang di UvoWorld!</div>
+  <!-- HUD TOP -->
+  <div class="hud" aria-hidden="false">
+    <div class="hp-wrap">
+      <div class="hp-box">
+        <div style="width:8px"></div>
+        <div style="font-size:13px;color:var(--muted);margin-right:6px">HP</div>
+        <div class="hp-bar" aria-hidden="true"><div id="hpFill" class="hp-fill"></div></div>
+      </div>
+    </div>
 
-<script>
-/* ======== TOAST ======== */
-function showToast(msg){
-  const t=document.getElementById("toast");
-  t.textContent=msg;t.classList.add("show");
-  setTimeout(()=>t.classList.remove("show"),2000);
-}
+    <div class="menu-panel">Menu</div>
+  </div>
 
-/* ======== FULLSCREEN DAN ORIENTASI ======== */
-const alertBox=document.getElementById("rotate-alert");
-const btnFull=document.getElementById("btnFullscreen");
-function checkOrientation(){
-  if(window.innerHeight>window.innerWidth){alertBox.classList.remove("hidden");}
-  else{alertBox.classList.add("hidden");}
-}
-window.addEventListener("resize",checkOrientation);
-checkOrientation();
-btnFull.onclick=()=>{document.documentElement.requestFullscreen();};
+  <!-- CONTROLS (left bottom corner and right vertical stack) -->
+  <div class="controls-wrap" style="pointer-events:none">
+    <div class="left-corner" style="pointer-events:auto">
+      <button id="btnLeft" class="corner-btn" aria-label="Left">
+        <!-- left arrow icon -->
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 6L9 12l6 6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="btnRight" class="corner-btn" aria-label="Right">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 6l6 6-6 6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
 
-/* ======== GAME LOGIC ======== */
-const canvas=document.getElementById("gameCanvas");
-const ctx=canvas.getContext("2d");
-let cw,ch;
-function resize(){cw=canvas.width=window.innerWidth;ch=canvas.height=window.innerHeight;}
-window.addEventListener("resize",resize);resize();
+    <div style="flex:1"></div>
 
-const groundY=ch-100;
-let hp=100;
-const hpBar=document.getElementById("hpFill");
+    <div class="right-corner" style="pointer-events:auto">
+      <div class="vert-stack" style="align-items:flex-end;margin-bottom:6px">
+        <button id="btnJump" class="vert-btn" aria-label="Jump">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 20V8" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M6 14l6-6 6 6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="btnCrouch" class="vert-btn" aria-label="Crouch">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12h16" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M8 16h8" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
 
-/* ======== HERO ======== */
-const hero={
-  x:200,y:groundY,vx:0,vy:0,dir:1,onGround:true,
-  state:"idle",frame:0,frameTick:0
-};
+      <button id="btnAttack" class="attack-circle" aria-label="Attack">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 21l18-9L3 3v7l12 2-12 2v7z" fill="#fff"></path></svg>
+      </button>
+    </div>
+  </div>
 
-const animations={
-  idle:4,run:6,jump:4,attack1:5,fall:2,hurt:3,die:7,crouch:4
-};
-const sprites={};
-for(let act in animations){
-  sprites[act]=[];
-  for(let i=0;i<animations[act];i++){
-    const img=new Image();
-    img.src=`asset/hero/adventurer-${act}-${String(i).padStart(2,'0')}.png`;
-    sprites[act].push(img);
-  }
-}
+  <!-- TOAST -->
+  <div id="toast" role="status" aria-live="polite">Selamat datang — gunakan kontrol di pojok!</div>
 
-/* ======== KONTROL ======== */
-const keys={left:false,right:false,jump:false,attack:false,crouch:false};
-document.getElementById("btnLeft").ontouchstart=()=>keys.left=true;
-document.getElementById("btnLeft").ontouchend=()=>keys.left=false;
-document.getElementById("btnRight").ontouchstart=()=>keys.right=true;
-document.getElementById("btnRight").ontouchend=()=>keys.right=false;
-document.getElementById("btnJump").ontouchstart=()=>{
-  if(hero.onGround){hero.vy=-12;hero.onGround=false;hero.state="jump";}
-};
-document.getElementById("btnAttack").ontouchstart=()=>{
-  hero.state="attack1";hero.frame=0;
-};
-document.getElementById("btnCrouch").ontouchstart=()=>{hero.state="crouch";};
-document.getElementById("btnCrouch").ontouchend=()=>{hero.state="idle";};
+  <script>
+  /* ================== PROTECTIONS ================== */
+  // Prevent default touchmove (no page scroll)
+  window.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
 
-/* ======== MAP & UPDATE ======== */
-function update(){
-  // Gerakan
-  if(hero.state!=="attack1" && hero.state!=="crouch" && hero.state!=="hurt" && hero.state!=="die"){
-    if(keys.left){hero.vx=-4;hero.dir=-1;hero.state="run";}
-    else if(keys.right){hero.vx=4;hero.dir=1;hero.state="run";}
-    else{hero.vx=0;if(hero.onGround)hero.state="idle";}
+  // Prevent context menu and drag
+  window.addEventListener('contextmenu', e => e.preventDefault());
+  window.addEventListener('dragstart', e => e.preventDefault());
+
+  // Small utility
+  const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+  const byId = id => document.getElementById(id);
+  const toast = byId('toast');
+  function showToast(msg, t=1800){
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'), t);
   }
 
-  // Fisika
-  hero.vy+=0.6;
-  hero.x+=hero.vx;
-  hero.y+=hero.vy;
-  if(hero.y>=groundY){hero.y=groundY;hero.vy=0;hero.onGround=true;}
-  else hero.onGround=false;
+  /* ================== ORIENTATION & FULLSCREEN HANDLING ================== */
+  const rotateOverlay = byId('rotateOverlay');
+  const btnFullLock = byId('btnFullLock');
+  const btnDismiss = byId('btnDismiss');
 
-  // Update frame
-  hero.frameTick++;
-  if(hero.frameTick>6){
-    hero.frame=(hero.frame+1)%animations[hero.state];
-    hero.frameTick=0;
+  function showRotateOverlay(){ rotateOverlay.classList.remove('hidden'); rotateOverlay.style.pointerEvents='auto'; }
+  function hideRotateOverlay(){ rotateOverlay.classList.add('hidden'); rotateOverlay.style.pointerEvents='none'; }
+
+  function isPortrait(){ return window.innerHeight > window.innerWidth; }
+
+  function tryLockLandscape(){
+    if(screen.orientation && screen.orientation.lock){
+      screen.orientation.lock('landscape').catch(()=>{/*ignore*/});
+    } else if(window.screen && window.screen.lockOrientation){
+      try{ window.screen.lockOrientation('landscape'); }catch(e){}
+    }
   }
 
-  // Kurangi HP kalau jatuh (contoh logika)
-  if(hero.y>groundY+200){hp-=1;if(hp<0)hp=0;}
-  hpBar.style.width=hp+"%";
-}
-
-/* ======== DRAW ======== */
-function draw(){
-  ctx.clearRect(0,0,cw,ch);
-  // Background & Ground
-  ctx.fillStyle="#3b3b3b";ctx.fillRect(0,groundY+50,cw,ch-groundY-50);
-  ctx.fillStyle="#2c2c2c";for(let i=0;i<cw;i+=50)ctx.fillRect(i,groundY+50,25,10);
-
-  // Hero
-  const set=sprites[hero.state];
-  if(set&&set[hero.frame]){
-    const img=set[hero.frame];
-    const w=img.width*2,h=img.height*2;
-    ctx.save();
-    ctx.translate(hero.x,hero.y);
-    ctx.scale(hero.dir,1);
-    ctx.drawImage(img,-w/2,-h,w,h);
-    ctx.restore();
+  function enterFullscreenAndLock(){
+    const el = document.documentElement;
+    if(el.requestFullscreen) el.requestFullscreen().then(()=>{ tryLockLandscape(); }).catch(()=>{});
+    else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
   }
-}
 
-/* ======== LOOP ======== */
-function loop(){update();draw();requestAnimationFrame(loop);}
-showToast("Selamat datang di UvoWorld!");
-loop();
-</script>
+  btnFullLock.addEventListener('click', ()=>{
+    enterFullscreenAndLock();
+    showToast('Mencoba aktifkan fullscreen & lock landscape...');
+    setTimeout(()=>{ if(!isPortrait()) hideRotateOverlay(); }, 600);
+  });
 
+  btnDismiss.addEventListener('click', ()=>{
+    // user forced dismiss; keep overlay hidden but still require rotate check
+    if(!isPortrait()) hideRotateOverlay();
+    else showToast('Silakan putar device untuk bermain',2000);
+  });
+
+  function checkAndToggleOverlay(){
+    if(isPortrait()){
+      showRotateOverlay();
+    } else {
+      hideRotateOverlay();
+    }
+  }
+  window.addEventListener('resize', checkAndToggleOverlay);
+  window.addEventListener('orientationchange', ()=>{ setTimeout(checkAndToggleOverlay,250) });
+  checkAndToggleOverlay();
+
+  /* ================== CANVAS + GAME CORE ================== */
+  const canvas = byId('gameCanvas');
+  const ctx = canvas.getContext('2d', { alpha:false });
+  let W = window.innerWidth, H = window.innerHeight;
+  function resize(){
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Ground & camera
+  const GROUND_Y = Math.round(H * 0.78);
+  const CAMERA = { x:0, y:0, shake:0 };
+
+  // HERO: robust finite-state with priorities
+  const hero = {
+    x: 200, y: GROUND_Y, vx:0, vy:0, w:48, h:64, dir:1,
+    state: 'idle', stateSince:0, frame:0, frameTick:0, onGround:true,
+    hp:100
+  };
+
+  // animation definitions driven by filenames in asset/hero/
+  const ANIMS = {
+    idle: {frames:4, loop:true},
+    'idle-2':{frames:4,loop:true},
+    run: {frames:6, loop:true},
+    jump: {frames:4, loop:false},
+    fall: {frames:2, loop:true},
+    attack1: {frames:5, loop:false},
+    attack2: {frames:6, loop:false},
+    attack3: {frames:6, loop:false},
+    hurt: {frames:3, loop:false},
+    die: {frames:7, loop:false},
+    crouch: {frames:4, loop:true},
+    'crnr-jmp':{frames:3,loop:false},
+    'crnr-clmb':{frames:5,loop:false},
+    slide:{frames:2,loop:true},
+    smrslt:{frames:4,loop:false},
+    run2:{frames:6,loop:true}
+  };
+
+  // Load sprites robustly and track when ready
+  const SPRITES = {};
+  let totalToLoad = 0, loadedCount = 0;
+  for(const key in ANIMS){
+    SPRITES[key]=[];
+    for(let i=0;i<ANIMS[key].frames;i++){
+      const img = new Image();
+      const fname = `asset/hero/adventurer-${key}-${String(i).padStart(2,'0')}.png`;
+      totalToLoad++;
+      img.onload = ()=>{ loadedCount++; };
+      img.onerror = ()=>{ /* fallback: transparent */ loadedCount++; console.warn('failed load', fname); };
+      img.src = fname;
+      SPRITES[key].push(img);
+    }
+  }
+
+  // safety: if some anims not present, map to idle frames
+  function ensureSprites(){
+    for(const k in ANIMS){
+      if(!SPRITES[k] || SPRITES[k].length < ANIMS[k].frames){
+        SPRITES[k] = SPRITES['idle'] ? SPRITES['idle'] : SPRITES[k];
+      }
+    }
+  }
+
+  // Controls: unified input handling, debounced, priority-based state changes
+  const INPUT = { left:false, right:false, jump:false, attack:false, crouch:false };
+  let inputLock = false; // lock to avoid double triggers
+
+  // Attach touch + mouse + keyboard
+  function bindBtn(id, onDown, onUp){
+    const el = byId(id);
+    if(!el) return;
+    // pointer events unify mouse/touch
+    el.addEventListener('pointerdown', (e)=>{
+      e.preventDefault(); el.classList.add('pressed'); onDown(e);
+    });
+    el.addEventListener('pointerup', (e)=>{ e.preventDefault(); el.classList.remove('pressed'); onUp(e); });
+    el.addEventListener('pointercancel', (e)=>{ e.preventDefault(); el.classList.remove('pressed'); onUp(e); });
+    el.addEventListener('pointerleave', (e)=>{ /* keep state on leave if pressed? remove */ el.classList.remove('pressed'); onUp(e); });
+  }
+
+  bindBtn('btnLeft', ()=>{ INPUT.left = true }, ()=>{ INPUT.left = false });
+  bindBtn('btnRight', ()=>{ INPUT.right = true }, ()=>{ INPUT.right = false });
+  bindBtn('btnJump', ()=>{ if(hero.onGround) { INPUT.jump = true } }, ()=>{ INPUT.jump = false });
+  bindBtn('btnAttack', ()=>{ INPUT.attack = true; setTimeout(()=>INPUT.attack=false, 120); }, ()=>{ INPUT.attack=false });
+  bindBtn('btnCrouch', ()=>{ INPUT.crouch = true; }, ()=>{ INPUT.crouch = false; });
+
+  // Keyboard
+  window.addEventListener('keydown', (e)=>{
+    if(e.repeat) return;
+    if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = true;
+    if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = true;
+    if(e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') INPUT.jump = true;
+    if(e.key === 'j') { INPUT.attack = true; setTimeout(()=>INPUT.attack=false,140); }
+    if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = true;
+  });
+  window.addEventListener('keyup', (e)=>{
+    if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = false;
+    if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = false;
+    if(e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') INPUT.jump = false;
+    if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = false;
+  });
+
+  // Protective update: clamp hero area inside world and prevent NaN
+  function safeClampHero(){
+    hero.x = clamp(hero.x, 32, Math.max(400, W - 32));
+    if(!isFinite(hero.x)) hero.x = 200;
+    if(!isFinite(hero.y)) hero.y = GROUND_Y;
+  }
+
+  // State machine for hero (priority rules)
+  function setState(newState){
+    if(hero.state === newState) return;
+    // don't interrupt die
+    if(hero.state === 'die') return;
+    // priority: hurt/die > attack > jump/fall > crouch > run > idle
+    const priority = { die:90, hurt:80, attack1:70, attack2:70, attack3:70, jump:60, fall:50, crouch:40, run:30, idle:10 };
+    const currP = priority[hero.state] || 0;
+    const nextP = priority[newState] || 0;
+    if(nextP < currP && !(hero.state === 'attack1' && newState === 'idle')) return; // prevent low-priority interrupt
+    hero.state = newState;
+    hero.stateSince = performance.now();
+    hero.frame = 0;
+    hero.frameTick = 0;
+  }
+
+  /* ========== GAME PHYSICS & LOGIC ========== */
+  const GRAVITY = 0.65;
+  const FRICTION = 0.88;
+
+  function update(dt){
+    // ensure sprites loaded fallback
+    if(loadedCount >= totalToLoad) ensureSprites();
+
+    // Movement input
+    let moveX = 0;
+    if(INPUT.left) moveX -= 1;
+    if(INPUT.right) moveX += 1;
+
+    // Attack input: immediate priority
+    if(INPUT.attack){
+      setState('attack1');
+      hero.vx = 0;
+      // small nudge for attack motion
+      hero.vx += hero.dir * 1.0;
+    } else if(!hero.onGround){
+      // mid-air: jump/fall
+      if(hero.vy < -1) setState('jump');
+      else setState('fall');
+    } else if(INPUT.crouch){
+      setState('crouch');
+      hero.vx *= 0.6;
+    } else if(moveX !== 0){
+      // normal run
+      hero.dir = moveX > 0 ? 1 : -1;
+      setState('run');
+      hero.vx += moveX * 0.8;
+    } else {
+      setState('idle');
+      hero.vx *= 0.8;
+    }
+
+    // Jump trigger (onGround)
+    if(INPUT.jump && hero.onGround){
+      hero.vy = -13.2;
+      hero.onGround = false;
+      setState('jump');
+      INPUT.jump = false; // consume single
+    }
+
+    // Apply gravity
+    hero.vy += GRAVITY;
+    hero.x += hero.vx;
+    hero.y += hero.vy;
+
+    // friction
+    hero.vx *= FRICTION;
+
+    // ground collision
+    if(hero.y >= GROUND_Y){
+      if(!hero.onGround && Math.abs(hero.vy) > 18){
+        // heavy fall => hurt
+        hero.hp = clamp(hero.hp - 10, 0, 100);
+        setState('hurt');
+      }
+      hero.y = GROUND_Y;
+      hero.vy = 0;
+      hero.onGround = true;
+    } else hero.onGround = false;
+
+    // clamp coords
+    safeClampHero();
+
+    // animation frame advance robustly (timing-based)
+    hero.frameTick += Math.max(1, Math.round(dt / 16));
+    const anim = ANIMS[hero.state] || ANIMS['idle'];
+    const speedFactor = (hero.state === 'run') ? 4 : (hero.state === 'attack1' ? 6 : 8);
+    const ticksPerFrame = speedFactor;
+    if(hero.frameTick >= ticksPerFrame){
+      hero.frameTick = 0;
+      hero.frame++;
+      if(hero.frame >= anim.frames){
+        if(anim.loop) hero.frame = 0;
+        else {
+          // on non-loop finishing states, decide next state
+          if(hero.state.startsWith('attack')) setState('idle');
+          else if(hero.state === 'jump' || hero.state === 'fall') setState(hero.onGround ? 'idle' : 'fall');
+          else setState('idle');
+        }
+      }
+    }
+  }
+
+  /* ========== RENDER ========== */
+  function draw(){
+    // background
+    ctx.fillStyle = '#101113';
+    ctx.fillRect(0,0,W,H);
+
+    // horizon / decorative
+    const skyGrad = ctx.createLinearGradient(0,0,0,H);
+    skyGrad.addColorStop(0, '#2a2d31');
+    skyGrad.addColorStop(1, '#141516');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0,0,W,H);
+
+    // simple parallax horizon
+    ctx.fillStyle = '#222428';
+    ctx.fillRect(0, GROUND_Y + 12, W, H - GROUND_Y - 12);
+
+    // ground tiles
+    ctx.fillStyle = '#2f3134';
+    for(let i=0;i<W+200;i+=56){
+      ctx.fillRect((i + (Math.sin(Date.now()/800 + i)*6))% (W+200) - 60, GROUND_Y + 18, 36, 10);
+    }
+
+    // hero sprite draw
+    const animSet = SPRITES[hero.state] && SPRITES[hero.state][hero.frame] ? SPRITES[hero.state] : (SPRITES['idle'] || []);
+    const img = animSet[hero.frame] || animSet[0];
+    if(img && img.complete && img.naturalWidth){
+      const scale = Math.max(1.6, Math.min(2.2, (H/720) * 2));
+      const w = img.width * scale, h = img.height * scale;
+      ctx.save();
+      ctx.translate(hero.x, hero.y);
+      ctx.scale(hero.dir, 1);
+      ctx.drawImage(img, -w/2, -h, w, h);
+      ctx.restore();
+    } else {
+      // placeholder box if sprite missing
+      ctx.save();
+      ctx.translate(hero.x, hero.y);
+      ctx.fillStyle = '#8a8d90';
+      ctx.fillRect(-20, -48, 40, 48);
+      ctx.restore();
+    }
+
+    // simple HUD overlay shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.fillRect(0,0,W,48);
+  }
+
+  /* ========== GAME LOOP (time-based) ========== */
+  let last = performance.now();
+  function tick(now){
+    const dt = now - last;
+    last = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  // wait until at least some sprites loaded (or timeout)
+  const spriteWaitStart = performance.now();
+  const SPRITE_WAIT_TIMEOUT = 1500;
+  (function waitAndStart(){
+    if(loadedCount >= Math.min(totalToLoad, 6) || performance.now() - spriteWaitStart > SPRITE_WAIT_TIMEOUT){
+      // start loop
+      last = performance.now();
+      requestAnimationFrame(tick);
+      showToast('Game siap — gunakan kontrol pojok!');
+    } else {
+      setTimeout(waitAndStart, 80);
+    }
+  })();
+
+  /* ========== ROBUSTNESS: handle visibilitychange, pause on blur ========== */
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden) {
+      // pause inputs
+      INPUT.left = INPUT.right = INPUT.attack = INPUT.jump = INPUT.crouch = false;
+      showToast('Game berhenti (background)');
+    } else {
+      showToast('Kembali main');
+    }
+  });
+
+  window.addEventListener('blur', ()=>{ INPUT.left = INPUT.right = INPUT.attack = INPUT.jump = INPUT.crouch = false; });
+
+  /* ========== UI SYNC: HP bar update ========= */
+  const hpFillEl = byId('hpFill');
+  setInterval(()=> {
+    hpFillEl.style.width = hero.hp + '%';
+  }, 120);
+
+  /* ========== REMOVE ANY WATERMARK ELEMENTS (if any) ========= */
+  // If somehow an external watermark element is injected, try to remove it by heuristics (classless badges)
+  setTimeout(()=>{
+    const imgs = Array.from(document.querySelectorAll('img,div'));
+    imgs.forEach(el=>{
+      if(el.innerText && /apkpure/i.test(el.innerText)){ el.remove(); }
+      if(el.src && typeof el.src === 'string' && /apkpure/i.test(el.src)) el.remove();
+    });
+  }, 800);
+
+  /* ========== Accessibility: keyboard hints ========= */
+  // On desktop show hint toast once
+  if(window.innerWidth > 900) setTimeout(()=>showToast('Gunakan A / D atau Panah Kiri/Kanan untuk bergerak, Space untuk lompat, J untuk serang'), 1400);
+  </script>
 </body>
 </html>
