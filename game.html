@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>UvoWorld Game</title>
+  <style>
+    * {margin:0;padding:0;box-sizing:border-box;}
+    html,body{
+      width:100%;height:100%;
+      background:#1a1b1f;
+      overflow:hidden;
+      font-family: 'Poppins', sans-serif;
+      touch-action: none;
+    }
+
+    /* ====== LAYAR PERINGATAN ====== */
+    #rotate-alert{
+      position:fixed;
+      inset:0;
+      background:#111;
+      color:white;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex-direction:column;
+      z-index:9999;
+      font-size:1.2rem;
+      text-align:center;
+      padding:1rem;
+    }
+    #rotate-alert.hidden{display:none;}
+    #rotate-alert button{
+      background:#0b84ff;
+      border:none;
+      color:#fff;
+      padding:.8rem 1.2rem;
+      margin-top:1rem;
+      border-radius:10px;
+      font-weight:600;
+      cursor:pointer;
+      box-shadow:0 0 15px rgba(11,132,255,.5);
+      transition:.2s;
+    }
+    #rotate-alert button:hover{background:#0a6be6;}
+
+    /* ====== KANVAS GAME ====== */
+    #gameCanvas{
+      width:100%;
+      height:100%;
+      background:linear-gradient(to top,#3e3e3e,#606060);
+      display:block;
+    }
+
+    /* ====== KONTROL MOBILE ====== */
+    .controls{
+      position:fixed;
+      bottom:20px;
+      left:50%;
+      transform:translateX(-50%);
+      width:100%;
+      max-width:500px;
+      display:flex;
+      justify-content:space-between;
+      padding:0 10px;
+      z-index:1000;
+      opacity:.9;
+    }
+    .btn{
+      width:60px;height:60px;
+      border-radius:50%;
+      background:#222;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px solid #555;
+      color:white;
+      font-size:22px;
+      transition:.2s;
+      user-select:none;
+    }
+    .btn:active{
+      background:#0b84ff;
+      border-color:#0b84ff;
+      transform:scale(0.95);
+    }
+
+    /* ====== TOAST MELAYANG ====== */
+    #toast{
+      position:fixed;
+      top:20px;
+      left:50%;
+      transform:translateX(-50%);
+      background:#0b84ff;
+      color:#fff;
+      padding:10px 20px;
+      border-radius:8px;
+      box-shadow:0 4px 20px rgba(0,0,0,.3);
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .4s, transform .4s;
+      z-index:2000;
+    }
+    #toast.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- PERINGATAN PORTRAIT -->
+  <div id="rotate-alert">
+    <p>Silakan ubah ke <strong>mode landscape</strong> untuk bermain.</p>
+    <button id="btnFullscreen">Aktifkan Fullscreen</button>
+  </div>
+
+  <!-- KANVAS GAME -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- KONTROL -->
+  <div class="controls">
+    <div class="btn" id="left">◀</div>
+    <div class="btn" id="attack">⚔</div>
+    <div class="btn" id="jump">⤴</div>
+    <div class="btn" id="right">▶</div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast">Selamat datang di UvoWorld!</div>
+
+  <script>
+  // ==== FUNGSI TOAST ====
+  function showToast(msg){
+    const toast = document.getElementById("toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(()=>toast.classList.remove("show"),2000);
+  }
+
+  // ==== HANDLER ROTASI DAN FULLSCREEN ====
+  const rotateAlert = document.getElementById("rotate-alert");
+  const gameCanvas = document.getElementById("gameCanvas");
+  const btnFull = document.getElementById("btnFullscreen");
+
+  function checkOrientation(){
+    if(window.innerHeight > window.innerWidth){
+      rotateAlert.classList.remove("hidden");
+    }else{
+      rotateAlert.classList.add("hidden");
+    }
+  }
+  checkOrientation();
+  window.addEventListener("resize", checkOrientation);
+
+  btnFull.addEventListener("click", ()=>{
+    if(document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen();
+    }
+  });
+
+  // ==== GAME LOGIC ====
+  const ctx = gameCanvas.getContext("2d");
+  let cw, ch;
+  function resizeCanvas(){
+    cw = gameCanvas.width = window.innerWidth;
+    ch = gameCanvas.height = window.innerHeight;
+  }
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+
+  // ==== HERO ====
+  const hero = {
+    x: 100,
+    y: 300,
+    vx: 0,
+    vy: 0,
+    onGround: false,
+    dir: 1,
+    action: "idle",
+    frame: 0,
+    frameDelay: 0
+  };
+
+  const actions = {
+    idle:4, run:6, jump:4, attack1:5, fall:2, hurt:3
+  };
+  const images = {};
+
+  // Load images
+  for(let act in actions){
+    images[act] = [];
+    for(let i=0;i<actions[act];i++){
+      const img = new Image();
+      img.src = `asset/hero/adventurer-${act}-${String(i).padStart(2,'0')}.png`;
+      images[act].push(img);
+    }
+  }
+
+  const keys = {left:false,right:false,jump:false,attack:false};
+
+  document.getElementById("left").ontouchstart = ()=>keys.left=true;
+  document.getElementById("left").ontouchend = ()=>keys.left=false;
+  document.getElementById("right").ontouchstart = ()=>keys.right=true;
+  document.getElementById("right").ontouchend = ()=>keys.right=false;
+  document.getElementById("jump").ontouchstart = ()=>{ if(hero.onGround){ hero.vy=-10; hero.onGround=false; hero.action="jump"; }};
+  document.getElementById("attack").ontouchstart = ()=>{ hero.action="attack1"; hero.frame=0; };
+
+  // ==== MAP SEDERHANA ====
+  const groundY = 400;
+
+  function update(){
+    // Gerakan
+    if(keys.left){ hero.vx=-3; hero.dir=-1; hero.action="run"; }
+    else if(keys.right){ hero.vx=3; hero.dir=1; hero.action="run"; }
+    else { hero.vx=0; if(hero.onGround) hero.action="idle"; }
+
+    // Fisika
+    hero.vy += 0.5; // gravitasi
+    hero.x += hero.vx;
+    hero.y += hero.vy;
+
+    // Lantai
+    if(hero.y >= groundY){
+      hero.y = groundY;
+      hero.vy = 0;
+      hero.onGround = true;
+    }else hero.onGround=false;
+
+    // Update frame animasi
+    hero.frameDelay++;
+    if(hero.frameDelay > 8){
+      hero.frame = (hero.frame + 1) % actions[hero.action];
+      hero.frameDelay=0;
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,cw,ch);
+
+    // Latar belakang / tanah
+    ctx.fillStyle="#2f2f2f";
+    ctx.fillRect(0,groundY+50,cw,ch-groundY-50);
+    ctx.fillStyle="#4c4c4c";
+    for(let i=0;i<cw;i+=50){
+      ctx.fillRect(i,groundY+50,25,10);
+    }
+
+    // Hero
+    const imgSet = images[hero.action];
+    if(imgSet && imgSet[hero.frame]){
+      const img = imgSet[hero.frame];
+      const scale = 2;
+      const w = img.width * scale;
+      const h = img.height * scale;
+      ctx.save();
+      ctx.translate(hero.x, hero.y);
+      ctx.scale(hero.dir, 1);
+      ctx.drawImage(img, -w/2, -h, w, h);
+      ctx.restore();
+    }
+  }
+
+  function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  showToast("Selamat datang di UvoWorld!");
+  loop();
+
+  </script>
+</body>
+</html>
