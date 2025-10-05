@@ -357,11 +357,115 @@ function update(dt){
     hero.x = safeNumber(hero.x, 200); hero.y = safeNumber(hero.y, GROUND_Y);
     hero.vx = safeNumber(hero.vx, 0); hero.vy = safeNumber(hero.vy, 0);
 
+    // remember previous onGround to detect landing
+    const prevOnGround = hero.onGround;
+
     // consume input buffer first
     consumeBuffer();
 
     // pause inputs until sprite ready
     if(!spriteReady){ hero.vx *= 0.8; hero.vy += 0.6; }
+    else {
+      // Attack takes precedence but must finish; disallow starting attack in mid-air (unless you want)
+      if(INPUT.attack && hero.onGround && !hero.state.startsWith('attack')){
+        if(performance.now() - hero.stateSince > 40){ setState('attack1'); queuedAction = null; INPUT.attack = false; }
+      } else if(!hero.onGround){
+        // while airborne, choose jump or fall and DO NOT auto-switch to run until you land
+        if(hero.vy < -1) setState('jump'); else setState('fall');
+      } else if(INPUT.crouch){ setState('crouch'); }
+      else if(INPUT.left || INPUT.right){
+        // resolve both pressed: choose most recent direction
+        if(INPUT.left && INPUT.right){
+          if(lastLeftAt > lastRightAt) hero.dir = -1; else hero.dir = 1;
+        } else hero.dir = INPUT.right ? 1 : -1;
+        setState('run');
+        hero.vx += (INPUT.right ? 1 : -1) * 1.2; // stronger acceleration for snappier control
+      } else {
+        // no movement input: reduce vx smoothly and return to idle if on ground
+        hero.vx *= 0.82;
+        if(hero.onGround) setState('idle');
+      }
+
+      // jump consumption (single impulse)
+      if(INPUT.jump && hero.onGround){ hero.vy = -13.2; hero.onGround = false; setState('jump'); INPUT.jump = false; }
+    }
+
+    // physics
+    hero.vy += 0.66;
+    hero.vx = clamp(hero.vx, -VX_MAX, VX_MAX);
+    hero.vy = clamp(hero.vy, VY_MIN, VY_MAX);
+
+    hero.x += hero.vx; hero.y += hero.vy;
+
+    // base ground & landing behavior
+    if(hero.y >= GROUND_Y){
+      if(!prevOnGround && Math.abs(hero.vy) > 18){ hero.hp = clamp(hero.hp - 8, 0, 100); setState('hurt'); }
+      // clamp to ground
+      hero.y = GROUND_Y; hero.vy = 0;
+      // detect landing event
+      if(!prevOnGround){
+        hero.onGround = true;
+        // NEW: after landing, decide animation based on current input
+        // If player is holding run (left/right) -> go to run, else -> idle
+        if(INPUT.left || INPUT.right){
+          forceState('run');
+        } else {
+          forceState('idle');
+        }
+      } else {
+        hero.onGround = true;
+      }
+    } else {
+      hero.onGround = false;
+    }
+
+    // obstacle collisions
+    const hRect = rectOfHero();
+    for(const obs of obstacles){ if(rectOverlap(hRect, obs)) resolveAABBCollision(hRect, obs); }
+
+    // clamp hero inside world bounds
+    hero.x = clamp(hero.x, 32, Math.max(600, W - 32));
+
+    // animation tick & protections against stuck repeating
+    hero.frameTick += Math.max(1, Math.floor(dt / 16));
+    const animMeta = ANIMS[hero.state] || ANIMS['idle'];
+    const ticksPerFrame = (hero.state === 'run' ? 4 : (hero.state.startsWith('attack') ? 6 : 8));
+    if(hero.frameTick >= ticksPerFrame){
+      hero.frameTick = 0;
+      const prevFrame = hero.frame;
+      hero.frame++;
+      hero.lastFrameChange = performance.now();
+
+      // when frame reaches end
+      if(hero.frame >= animMeta){
+        const nonLooping = !['idle','run','fall','crouch'].includes(hero.state);
+        if(!animMeta || animMeta <= 0) hero.frame = 0; else {
+          if(!nonLooping){ hero.frame = hero.frame % animMeta; }
+          else {
+            // finished a non-looping animation -> go to appropriate next (force)
+            // Prefer movement if input held
+            if(INPUT.left || INPUT.right) forceState('run');
+            else forceState('idle');
+            hero.frame = 0;
+          }
+        }
+      }
+    }
+
+    // stuck-state watchdog: if state hasn't changed frames in a long time, reset to idle
+    if(performance.now() - hero.lastFrameChange > 2500){ console.warn('frame stalled, forcing idle'); forceState('idle'); }
+
+    // queuedAction cleanup
+    if(queuedAction && queuedAction === 'attack' && !hero.state.startsWith('attack')) queuedAction = null;
+
+    // sanitize numbers
+    hero.x = safeNumber(hero.x, 200); hero.y = safeNumber(hero.y, GROUND_Y);
+
+  } catch(err){
+    console.error('update error', err);
+    hero.vx = 0; hero.vy = 0; hero.state = 'idle'; hero.frame = 0; hero.frameTick = 0; hero.hp = clamp(hero.hp,0,100);
+  }
+}
     else {
       // Attack takes precedence but must finish; disallow starting attack in mid-air (unless you want)
       if(INPUT.attack && hero.onGround && !hero.state.startsWith('attack')){
