@@ -2,274 +2,218 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, maximum-scale=1.0, user-scalable=no" />
   <title>UvoWorld Game</title>
   <style>
-    * {margin:0;padding:0;box-sizing:border-box;}
-    html,body{
-      width:100%;height:100%;
-      background:#1a1b1f;
-      overflow:hidden;
-      font-family: 'Poppins', sans-serif;
-      touch-action: none;
-    }
+    *{margin:0;padding:0;box-sizing:border-box;user-select:none;}
+    html,body{width:100%;height:100%;background:#1e1f22;font-family:Poppins, sans-serif;overflow:hidden;}
+    canvas{background:linear-gradient(to top,#2e2f33,#3d3f44);display:block;width:100%;height:100%;}
 
-    /* ====== LAYAR PERINGATAN ====== */
+    /* ========= OVERLAY ROTATE ========= */
     #rotate-alert{
-      position:fixed;
-      inset:0;
-      background:#111;
-      color:white;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      flex-direction:column;
-      z-index:9999;
-      font-size:1.2rem;
-      text-align:center;
-      padding:1rem;
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      background:#000;color:white;flex-direction:column;z-index:10000;
     }
     #rotate-alert.hidden{display:none;}
     #rotate-alert button{
-      background:#0b84ff;
-      border:none;
-      color:#fff;
-      padding:.8rem 1.2rem;
-      margin-top:1rem;
-      border-radius:10px;
-      font-weight:600;
-      cursor:pointer;
-      box-shadow:0 0 15px rgba(11,132,255,.5);
-      transition:.2s;
+      background:#0b84ff;color:#fff;border:none;border-radius:8px;
+      padding:10px 18px;margin-top:15px;box-shadow:0 0 15px #0b84ff;
+      font-weight:600;cursor:pointer;transition:.3s;
     }
-    #rotate-alert button:hover{background:#0a6be6;}
+    #rotate-alert button:hover{background:#006fe6;}
 
-    /* ====== KANVAS GAME ====== */
-    #gameCanvas{
-      width:100%;
-      height:100%;
-      background:linear-gradient(to top,#3e3e3e,#606060);
-      display:block;
-    }
-
-    /* ====== KONTROL MOBILE ====== */
-    .controls{
-      position:fixed;
-      bottom:20px;
-      left:50%;
-      transform:translateX(-50%);
-      width:100%;
-      max-width:500px;
-      display:flex;
-      justify-content:space-between;
-      padding:0 10px;
+    /* ========= HUD ========= */
+    .hud{
+      position:fixed;top:10px;left:10px;right:10px;
+      display:flex;justify-content:space-between;align-items:center;
       z-index:1000;
-      opacity:.9;
     }
-    .btn{
-      width:60px;height:60px;
-      border-radius:50%;
-      background:#222;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border:2px solid #555;
-      color:white;
-      font-size:22px;
-      transition:.2s;
-      user-select:none;
+    .hp-bar{
+      width:150px;height:20px;background:#333;border-radius:20px;overflow:hidden;
+      box-shadow:0 0 10px rgba(0,0,0,.5);
     }
-    .btn:active{
-      background:#0b84ff;
-      border-color:#0b84ff;
-      transform:scale(0.95);
+    .hp-fill{
+      height:100%;width:100%;background:linear-gradient(90deg,#ff4747,#ff0000);
+      transition:width .3s;
+    }
+    .menu-bar{
+      background:#2e2e2e;border:1px solid #555;border-radius:10px;
+      color:white;padding:8px 15px;font-size:14px;font-weight:500;
+      box-shadow:0 0 10px rgba(0,0,0,.3);
     }
 
-    /* ====== TOAST MELAYANG ====== */
+    /* ========= KONTROL ========= */
+    .controls{
+      position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+      width:100%;max-width:700px;display:flex;justify-content:space-between;
+      padding:0 20px;z-index:1000;
+    }
+    .left-controls,.right-controls{display:flex;gap:15px;}
+    .btn{
+      width:70px;height:70px;border-radius:50%;background:#222;
+      border:2px solid #555;display:flex;align-items:center;justify-content:center;
+      color:#fff;font-size:26px;box-shadow:0 0 10px rgba(0,0,0,.5);
+      transition:.2s;
+    }
+    .btn:active{background:#0b84ff;border-color:#0b84ff;transform:scale(.9);}
+
+    /* ========= TOAST ========= */
     #toast{
-      position:fixed;
-      top:20px;
-      left:50%;
-      transform:translateX(-50%);
-      background:#0b84ff;
-      color:#fff;
-      padding:10px 20px;
-      border-radius:8px;
-      box-shadow:0 4px 20px rgba(0,0,0,.3);
-      opacity:0;
-      pointer-events:none;
-      transition:opacity .4s, transform .4s;
-      z-index:2000;
+      position:fixed;top:15px;left:50%;transform:translateX(-50%);
+      background:#0b84ff;color:white;padding:10px 20px;border-radius:8px;
+      opacity:0;pointer-events:none;transition:opacity .3s;z-index:2000;
+      box-shadow:0 0 20px rgba(11,132,255,.5);
     }
-    #toast.show{
-      opacity:1;
-      transform:translateX(-50%) translateY(0);
-    }
+    #toast.show{opacity:1;}
   </style>
 </head>
 <body>
 
-  <!-- PERINGATAN PORTRAIT -->
-  <div id="rotate-alert">
-    <p>Silakan ubah ke <strong>mode landscape</strong> untuk bermain.</p>
-    <button id="btnFullscreen">Aktifkan Fullscreen</button>
+<div id="rotate-alert">
+  <p>Silakan ubah ke mode <b>Landscape</b> untuk bermain!</p>
+  <button id="btnFullscreen">Aktifkan Fullscreen</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- HUD -->
+<div class="hud">
+  <div class="hp-bar"><div class="hp-fill" id="hpFill"></div></div>
+  <div class="menu-bar">⚙️ Menu</div>
+</div>
+
+<!-- Kontrol -->
+<div class="controls">
+  <div class="left-controls">
+    <div class="btn" id="btnLeft">◀</div>
+    <div class="btn" id="btnRight">▶</div>
   </div>
-
-  <!-- KANVAS GAME -->
-  <canvas id="gameCanvas"></canvas>
-
-  <!-- KONTROL -->
-  <div class="controls">
-    <div class="btn" id="left">◀</div>
-    <div class="btn" id="attack">⚔</div>
-    <div class="btn" id="jump">⤴</div>
-    <div class="btn" id="right">▶</div>
+  <div class="right-controls">
+    <div class="btn" id="btnJump">⤴</div>
+    <div class="btn" id="btnAttack">⚔</div>
+    <div class="btn" id="btnCrouch">⬇</div>
   </div>
+</div>
 
-  <!-- TOAST -->
-  <div id="toast">Selamat datang di UvoWorld!</div>
+<div id="toast">Selamat datang di UvoWorld!</div>
 
-  <script>
-  // ==== FUNGSI TOAST ====
-  function showToast(msg){
-    const toast = document.getElementById("toast");
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(()=>toast.classList.remove("show"),2000);
+<script>
+/* ======== TOAST ======== */
+function showToast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg;t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"),2000);
+}
+
+/* ======== FULLSCREEN DAN ORIENTASI ======== */
+const alertBox=document.getElementById("rotate-alert");
+const btnFull=document.getElementById("btnFullscreen");
+function checkOrientation(){
+  if(window.innerHeight>window.innerWidth){alertBox.classList.remove("hidden");}
+  else{alertBox.classList.add("hidden");}
+}
+window.addEventListener("resize",checkOrientation);
+checkOrientation();
+btnFull.onclick=()=>{document.documentElement.requestFullscreen();};
+
+/* ======== GAME LOGIC ======== */
+const canvas=document.getElementById("gameCanvas");
+const ctx=canvas.getContext("2d");
+let cw,ch;
+function resize(){cw=canvas.width=window.innerWidth;ch=canvas.height=window.innerHeight;}
+window.addEventListener("resize",resize);resize();
+
+const groundY=ch-100;
+let hp=100;
+const hpBar=document.getElementById("hpFill");
+
+/* ======== HERO ======== */
+const hero={
+  x:200,y:groundY,vx:0,vy:0,dir:1,onGround:true,
+  state:"idle",frame:0,frameTick:0
+};
+
+const animations={
+  idle:4,run:6,jump:4,attack1:5,fall:2,hurt:3,die:7,crouch:4
+};
+const sprites={};
+for(let act in animations){
+  sprites[act]=[];
+  for(let i=0;i<animations[act];i++){
+    const img=new Image();
+    img.src=`asset/hero/adventurer-${act}-${String(i).padStart(2,'0')}.png`;
+    sprites[act].push(img);
+  }
+}
+
+/* ======== KONTROL ======== */
+const keys={left:false,right:false,jump:false,attack:false,crouch:false};
+document.getElementById("btnLeft").ontouchstart=()=>keys.left=true;
+document.getElementById("btnLeft").ontouchend=()=>keys.left=false;
+document.getElementById("btnRight").ontouchstart=()=>keys.right=true;
+document.getElementById("btnRight").ontouchend=()=>keys.right=false;
+document.getElementById("btnJump").ontouchstart=()=>{
+  if(hero.onGround){hero.vy=-12;hero.onGround=false;hero.state="jump";}
+};
+document.getElementById("btnAttack").ontouchstart=()=>{
+  hero.state="attack1";hero.frame=0;
+};
+document.getElementById("btnCrouch").ontouchstart=()=>{hero.state="crouch";};
+document.getElementById("btnCrouch").ontouchend=()=>{hero.state="idle";};
+
+/* ======== MAP & UPDATE ======== */
+function update(){
+  // Gerakan
+  if(hero.state!=="attack1" && hero.state!=="crouch" && hero.state!=="hurt" && hero.state!=="die"){
+    if(keys.left){hero.vx=-4;hero.dir=-1;hero.state="run";}
+    else if(keys.right){hero.vx=4;hero.dir=1;hero.state="run";}
+    else{hero.vx=0;if(hero.onGround)hero.state="idle";}
   }
 
-  // ==== HANDLER ROTASI DAN FULLSCREEN ====
-  const rotateAlert = document.getElementById("rotate-alert");
-  const gameCanvas = document.getElementById("gameCanvas");
-  const btnFull = document.getElementById("btnFullscreen");
+  // Fisika
+  hero.vy+=0.6;
+  hero.x+=hero.vx;
+  hero.y+=hero.vy;
+  if(hero.y>=groundY){hero.y=groundY;hero.vy=0;hero.onGround=true;}
+  else hero.onGround=false;
 
-  function checkOrientation(){
-    if(window.innerHeight > window.innerWidth){
-      rotateAlert.classList.remove("hidden");
-    }else{
-      rotateAlert.classList.add("hidden");
-    }
-  }
-  checkOrientation();
-  window.addEventListener("resize", checkOrientation);
-
-  btnFull.addEventListener("click", ()=>{
-    if(document.documentElement.requestFullscreen){
-      document.documentElement.requestFullscreen();
-    }
-  });
-
-  // ==== GAME LOGIC ====
-  const ctx = gameCanvas.getContext("2d");
-  let cw, ch;
-  function resizeCanvas(){
-    cw = gameCanvas.width = window.innerWidth;
-    ch = gameCanvas.height = window.innerHeight;
-  }
-  resizeCanvas();
-  window.addEventListener("resize", resizeCanvas);
-
-  // ==== HERO ====
-  const hero = {
-    x: 100,
-    y: 300,
-    vx: 0,
-    vy: 0,
-    onGround: false,
-    dir: 1,
-    action: "idle",
-    frame: 0,
-    frameDelay: 0
-  };
-
-  const actions = {
-    idle:4, run:6, jump:4, attack1:5, fall:2, hurt:3
-  };
-  const images = {};
-
-  // Load images
-  for(let act in actions){
-    images[act] = [];
-    for(let i=0;i<actions[act];i++){
-      const img = new Image();
-      img.src = `asset/hero/adventurer-${act}-${String(i).padStart(2,'0')}.png`;
-      images[act].push(img);
-    }
+  // Update frame
+  hero.frameTick++;
+  if(hero.frameTick>6){
+    hero.frame=(hero.frame+1)%animations[hero.state];
+    hero.frameTick=0;
   }
 
-  const keys = {left:false,right:false,jump:false,attack:false};
+  // Kurangi HP kalau jatuh (contoh logika)
+  if(hero.y>groundY+200){hp-=1;if(hp<0)hp=0;}
+  hpBar.style.width=hp+"%";
+}
 
-  document.getElementById("left").ontouchstart = ()=>keys.left=true;
-  document.getElementById("left").ontouchend = ()=>keys.left=false;
-  document.getElementById("right").ontouchstart = ()=>keys.right=true;
-  document.getElementById("right").ontouchend = ()=>keys.right=false;
-  document.getElementById("jump").ontouchstart = ()=>{ if(hero.onGround){ hero.vy=-10; hero.onGround=false; hero.action="jump"; }};
-  document.getElementById("attack").ontouchstart = ()=>{ hero.action="attack1"; hero.frame=0; };
+/* ======== DRAW ======== */
+function draw(){
+  ctx.clearRect(0,0,cw,ch);
+  // Background & Ground
+  ctx.fillStyle="#3b3b3b";ctx.fillRect(0,groundY+50,cw,ch-groundY-50);
+  ctx.fillStyle="#2c2c2c";for(let i=0;i<cw;i+=50)ctx.fillRect(i,groundY+50,25,10);
 
-  // ==== MAP SEDERHANA ====
-  const groundY = 400;
-
-  function update(){
-    // Gerakan
-    if(keys.left){ hero.vx=-3; hero.dir=-1; hero.action="run"; }
-    else if(keys.right){ hero.vx=3; hero.dir=1; hero.action="run"; }
-    else { hero.vx=0; if(hero.onGround) hero.action="idle"; }
-
-    // Fisika
-    hero.vy += 0.5; // gravitasi
-    hero.x += hero.vx;
-    hero.y += hero.vy;
-
-    // Lantai
-    if(hero.y >= groundY){
-      hero.y = groundY;
-      hero.vy = 0;
-      hero.onGround = true;
-    }else hero.onGround=false;
-
-    // Update frame animasi
-    hero.frameDelay++;
-    if(hero.frameDelay > 8){
-      hero.frame = (hero.frame + 1) % actions[hero.action];
-      hero.frameDelay=0;
-    }
+  // Hero
+  const set=sprites[hero.state];
+  if(set&&set[hero.frame]){
+    const img=set[hero.frame];
+    const w=img.width*2,h=img.height*2;
+    ctx.save();
+    ctx.translate(hero.x,hero.y);
+    ctx.scale(hero.dir,1);
+    ctx.drawImage(img,-w/2,-h,w,h);
+    ctx.restore();
   }
+}
 
-  function draw(){
-    ctx.clearRect(0,0,cw,ch);
+/* ======== LOOP ======== */
+function loop(){update();draw();requestAnimationFrame(loop);}
+showToast("Selamat datang di UvoWorld!");
+loop();
+</script>
 
-    // Latar belakang / tanah
-    ctx.fillStyle="#2f2f2f";
-    ctx.fillRect(0,groundY+50,cw,ch-groundY-50);
-    ctx.fillStyle="#4c4c4c";
-    for(let i=0;i<cw;i+=50){
-      ctx.fillRect(i,groundY+50,25,10);
-    }
-
-    // Hero
-    const imgSet = images[hero.action];
-    if(imgSet && imgSet[hero.frame]){
-      const img = imgSet[hero.frame];
-      const scale = 2;
-      const w = img.width * scale;
-      const h = img.height * scale;
-      ctx.save();
-      ctx.translate(hero.x, hero.y);
-      ctx.scale(hero.dir, 1);
-      ctx.drawImage(img, -w/2, -h, w, h);
-      ctx.restore();
-    }
-  }
-
-  function loop(){
-    update();
-    draw();
-    requestAnimationFrame(loop);
-  }
-
-  showToast("Selamat datang di UvoWorld!");
-  loop();
-
-  </script>
 </body>
 </html>
