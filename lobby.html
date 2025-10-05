@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>UvoWorld — Lobby</title>
+  <style>
+    body{font-family:Inter,system-ui,Arial;background:#0f1113;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    .card{background:#121314;padding:24px;border-radius:12px;width:420px}
+    h2{margin:0 0 10px}
+    .row{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+    button{padding:10px;border-radius:8px;border:none;background:#0b84ff;color:#fff;cursor:pointer}
+    .muted{color:#9aa0a6}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Lobby — UvoWorld</h2>
+    <div>Username: <strong id="uName">-</strong></div>
+    <div class="row"><div>Coin</div><div id="uCoin">0</div></div>
+    <div class="row" style="margin-top:18px">
+      <button id="btnStart">Start Game</button>
+      <button id="btnLogout" style="background:transparent;border:1px solid rgba(255,255,255,0.06)">Logout</button>
+    </div>
+    <div style="margin-top:12px" class="muted">Klik Start Game untuk masuk ke game. Map hanya 1 — pemain lain yang online akan muncul di sana.</div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script>
+    const firebaseConfig = { databaseURL: "https://uvoword-default-rtdb.asia-southeast1.firebasedatabase.app" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const u = localStorage.getItem('uvo_user');
+    if(!u){ location.href = 'index.html'; throw new Error('no user'); }
+    document.getElementById('uName').textContent = u;
+
+    // read coin
+    db.ref('users/' + u + '/coin').get().then(snap=>{
+      if(snap.exists()) document.getElementById('uCoin').textContent = snap.val();
+    });
+
+    document.getElementById('btnStart').addEventListener('click', ()=>{
+      // go to game
+      location.href = 'game.html';
+    });
+    document.getElementById('btnLogout').addEventListener('click', ()=>{
+      localStorage.removeItem('uvo_user'); location.href = 'index.html';
+    });
+  </script>
+</body>
+</html>
