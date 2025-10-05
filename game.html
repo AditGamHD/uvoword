@@ -1,574 +1,531 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-  <meta name="theme-color" content="#1e1f22"> <!-- browser UI warna mengikuti game -->
-  <title>UvoWorld — Play</title>
-
-  <style>
-    /* ================== RESET & SAFETY ================== */
-    :root{
-      --bg-1:#16171a;
-      --bg-2:#2e3136;
-      --accent:#0b84ff;
-      --panel:#222326;
-      --muted:#8a8d90;
-      --hud-height:64px;
-      --btn-size:74px;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%;width:100%;margin:0;padding:0;touch-action:none;overscroll-behavior:none;background:var(--bg-1);color:#fff;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
-    img,canvas{user-select:none;-webkit-user-drag:none}
-
-    /* Prevent page scroll */
-    body,html{overflow:hidden}
-
-    /* ========= CANVAS ========= */
-    #gameWrap{position:fixed;inset:0;display:flex;align-items:stretch;justify-content:stretch}
-    #gameCanvas{width:100%;height:100%;display:block;background:linear-gradient(180deg,var(--bg-2),#43474b)}
-
-    /* ========= ROTATE / FULLSCREEN OVERLAY ========= */
-    #rotateOverlay{
-      position:fixed;inset:0;background:rgba(8,8,10,0.95);z-index:9999;display:flex;
-      align-items:center;justify-content:center;flex-direction:column;gap:18px;padding:24px;text-align:center;
-      transition:opacity .25s ease;
-    }
-    #rotateOverlay.hidden{opacity:0;pointer-events:none}
-    .rotate-card{
-      background:linear-gradient(180deg,#0f1113,#151619);
-      padding:22px;border-radius:14px;border:1px solid rgba(255,255,255,0.04);
-      box-shadow:0 10px 40px rgba(0,0,0,0.6);max-width:420px;width:100%;
-    }
-    .rotate-title{font-weight:700;font-size:18px;margin-bottom:6px}
-    .rotate-desc{color:var(--muted);font-size:14px;margin-bottom:12px}
-
-    /* Animated device icon */
-    .device-icon{
-      width:88px;height:88px;margin:0 auto 6px;display:block;animation:rotateFloat 1.6s ease-in-out infinite;
-    }
-    @keyframes rotateFloat{
-      0%{transform:translateY(0) rotate(0deg)}
-      50%{transform:translateY(-6px) rotate(-3deg)}
-      100%{transform:translateY(0) rotate(0deg)}
-    }
-    .rotate-actions{display:flex;gap:10px;justify-content:center}
-    .btn-ghost{
-      background:transparent;border:1px solid rgba(255,255,255,0.08);color:#fff;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600
-    }
-    .btn-primary{
-      background:var(--accent);border:none;color:#fff;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:700
-    }
-
-    /* ========= HUD TOP ========= */
-    .hud{
-      position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;z-index:800;pointer-events:none;
-    }
-    .hp-wrap{pointer-events:auto}
-    .hp-box{
-      width:220px;height:36px;background:linear-gradient(90deg,#252528,#1e1f22);border-radius:20px;padding:4px;border:1px solid rgba(255,255,255,0.04);
-      display:flex;align-items:center;gap:10px;font-weight:600;color:#fff
-    }
-    .hp-bar {height:24px;background:#2b2b2c;border-radius:16px;overflow:hidden;width:140px}
-    .hp-fill{height:100%;background:linear-gradient(90deg,#ff6b6b,#ff2b2b);width:100%;transition:width .35s}
-    .menu-panel{
-      pointer-events:auto;background:linear-gradient(180deg,#212224,#1c1d1f);padding:8px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.04);display:flex;gap:10px;align-items:center;color:var(--muted)
-    }
-
-    /* ========= CONTROLS BOTTOM (layout like image) ========= */
-    .controls-wrap{
-      position:fixed;inset:auto 0 18px 0;display:flex;justify-content:space-between;align-items:flex-end;padding:0 12px;z-index:900;pointer-events:none;
-      max-width:1200px;margin:0 auto;left:0;right:0;
-    }
-    /* left corner buttons (at pojok kiri bawah) */
-    .left-corner{pointer-events:auto;padding:12px;display:flex;gap:10px;flex-direction:row;align-items:center}
-    .corner-btn{width:var(--btn-size);height:var(--btn-size);border-radius:12px;background:linear-gradient(180deg,#1b1c1e,#26272a);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.04);box-shadow:0 10px 30px rgba(0,0,0,0.6);cursor:pointer}
-    .corner-btn svg{width:36px;height:36px;opacity:0.95}
-
-    /* right corner: vertical stack (attack circular + vertical jump/crouch) */
-    .right-corner{pointer-events:auto;padding:12px;display:flex;gap:14px;flex-direction:column;align-items:flex-end}
-    .attack-circle{width:86px;height:86px;border-radius:999px;background:linear-gradient(180deg,var(--accent),#0569d6);display:flex;align-items:center;justify-content:center;border:2px solid rgba(0,0,0,0.25);box-shadow:0 12px 30px rgba(11,132,255,0.18);cursor:pointer}
-    .attack-circle svg{width:42px;height:42px;filter:drop-shadow(0 6px 14px rgba(11,132,255,0.18))}
-    .vert-stack{display:flex;flex-direction:column;gap:12px}
-    .vert-btn{width:62px;height:62px;border-radius:12px;background:linear-gradient(180deg,#252527,#1f2022);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.04);cursor:pointer}
-    .vert-btn svg{width:28px;height:28px;opacity:0.95}
-
-    /* Button press visuals */
-    .pressed{transform:translateY(2px) scale(.98);box-shadow:none;opacity:.95}
-
-    /* ========= TOAST ========= */
-    #toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--accent);padding:10px 18px;border-radius:10px;color:#fff;z-index:1200;opacity:0;transition:opacity .3s}
-    #toast.show{opacity:1}
-
-    /* ========= RESPONSIVE ADJUSTMENTS ========= */
-    @media (max-width:700px){
-      .hp-box{width:170px}
-      .hp-bar{width:110px}
-      .attack-circle{width:76px;height:76px}
-      .attack-circle svg{width:36px;height:36px}
-      .corner-btn{width:56px;height:56px;border-radius:10px}
-      .vert-btn{width:56px;height:56px}
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#141516">
+<title>UvoWorld — Fix Animations & Protections</title>
+<style>
+  :root{
+    --bg:#0f1113; --panel:#1d1f22; --accent:#0b84ff; --muted:#9aa0a6;
+    --btn-size:72px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;width:100%;margin:0;padding:0;overflow:hidden;background:var(--bg);color:#fff;font-family:Inter,system-ui,Arial;}
+  canvas{display:block;width:100%;height:100%;background:linear-gradient(180deg,#202226,#121315)}
+  /* Overlay rotate */
+  #rotateOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;background:rgba(3,3,4,0.94);padding:20px;text-align:center}
+  #rotateOverlay.hidden{display:none}
+  .rotate-box{background:linear-gradient(180deg,#0c0d0e,#121314);padding:20px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);max-width:420px}
+  .rotate-title{font-weight:700;font-size:18px;margin-bottom:8px}
+  .rotate-desc{color:var(--muted);margin-bottom:12px;font-size:14px}
+  .btn{padding:10px 14px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+  /* HUD top */
+  .hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;z-index:800;pointer-events:none}
+  .hp-box{pointer-events:auto;background:linear-gradient(180deg,#1b1c1e,#161718);padding:8px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);display:flex;gap:10px;align-items:center}
+  .hp-bar{width:160px;height:18px;background:#232425;border-radius:10px;overflow:hidden}
+  .hp-fill{height:100%;width:100%;background:linear-gradient(90deg,#ff6b6b,#ff2b2b);transition:width .32s}
+  .menu{pointer-events:auto;background:linear-gradient(180deg,#1b1c1e,#141516);padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);color:var(--muted)}
+  /* Controls bottom corners */
+  .controls{position:fixed;left:0;right:0;bottom:18px;display:flex;justify-content:space-between;align-items:end;padding:0 12px;z-index:900;pointer-events:none}
+  .left-corner,.right-corner{pointer-events:auto;display:flex;gap:10px;align-items:center}
+  .corner-btn{width:var(--btn-size);height:var(--btn-size);border-radius:12px;background:linear-gradient(180deg,#17181a,#232426);border:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.6)}
+  .attack-circle{width:86px;height:86px;border-radius:999px;background:linear-gradient(180deg,var(--accent),#0569d6);display:flex;align-items:center;justify-content:center;border:2px solid rgba(0,0,0,0.2);cursor:pointer;box-shadow:0 12px 30px rgba(11,132,255,0.14)}
+  .vert-stack{display:flex;flex-direction:column;gap:12px}
+  .pressed{transform:translateY(2px) scale(.98);opacity:.96}
+  /* toast */
+  #toast{position:fixed;left:50%;top:16px;transform:translateX(-50%);background:var(--accent);padding:8px 14px;border-radius:8px;color:#fff;z-index:1200;opacity:0;transition:opacity .25s}
+  #toast.show{opacity:1}
+  @media (max-width:700px){:root{--btn-size:60px}.attack-circle{width:70px;height:70px}}
+</style>
 </head>
 <body>
-  <div id="gameWrap">
-    <canvas id="gameCanvas" width="1280" height="720"></canvas>
-  </div>
+  <div id="gameWrap"><canvas id="gameCanvas" width="1280" height="720"></canvas></div>
 
   <!-- ROTATE / FULLSCREEN OVERLAY -->
-  <div id="rotateOverlay" aria-hidden="false">
-    <div class="rotate-card" role="dialog" aria-modal="true">
-      <svg class="device-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="8" y="8" width="48" height="48" rx="6" stroke="rgba(255,255,255,0.08)" fill="none" stroke-width="1.5"/>
-        <path d="M20 12v40" stroke="rgba(255,255,255,0.06)" stroke-width="1.2" />
-        <path d="M44 12v40" stroke="rgba(255,255,255,0.06)" stroke-width="1.2" />
-        <path d="M32 18v10" stroke="#fff" stroke-opacity="0.9" stroke-width="1.4" stroke-linecap="round"/>
-        <path d="M32 36c3-1.5 6-1.5 8 0" stroke="#fff" stroke-opacity="0.9" stroke-width="1.4" stroke-linecap="round"/>
-      </svg>
-
-      <div class="rotate-title">Mohon rotasi device Anda</div>
-      <div class="rotate-desc">Game bekerja optimal pada orientasi landscape. Untuk pengalaman terbaik, aktifkan fullscreen dan putar perangkat ke landscape.</div>
-
-      <div style="display:flex;gap:10px;justify-content:center">
-        <button id="btnFullLock" class="btn-primary">Aktifkan Fullscreen & Lock</button>
-        <button id="btnDismiss" class="btn-ghost">Saya Sudah</button>
+  <div id="rotateOverlay">
+    <div class="rotate-box">
+      <div class="rotate-title">Mohon Rotasi Device Anda</div>
+      <div class="rotate-desc">Aktifkan fullscreen lalu putar perangkat ke <strong>landscape</strong>. Game butuh orientasi landscape untuk kontrol optimal.</div>
+      <div style="display:flex;gap:8px;justify-content:center">
+        <button id="btnFullLock" class="btn">Aktifkan Fullscreen & Lock</button>
+        <button id="btnDismiss" class="btn ghost">Saya Sudah</button>
       </div>
     </div>
   </div>
 
-  <!-- HUD TOP -->
-  <div class="hud" aria-hidden="false">
-    <div class="hp-wrap">
-      <div class="hp-box">
-        <div style="width:8px"></div>
-        <div style="font-size:13px;color:var(--muted);margin-right:6px">HP</div>
-        <div class="hp-bar" aria-hidden="true"><div id="hpFill" class="hp-fill"></div></div>
-      </div>
-    </div>
-
-    <div class="menu-panel">Menu</div>
+  <!-- HUD -->
+  <div class="hud">
+    <div class="hp-box" aria-hidden="false"><svg width="18" height="18" viewBox="0 0 24 24" style="opacity:.95"><path d="M12 21s-8-4.5-8-11a5 5 0 0 1 10 0 5 5 0 0 1 10 0c0 6.5-8 11-8 11z" fill="#ff6b6b"/></svg><div style="font-size:13px;color:var(--muted)">HP</div><div class="hp-bar"><div id="hpFill" class="hp-fill"></div></div></div>
+    <div class="menu">Menu</div>
   </div>
 
-  <!-- CONTROLS (left bottom corner and right vertical stack) -->
-  <div class="controls-wrap" style="pointer-events:none">
-    <div class="left-corner" style="pointer-events:auto">
+  <!-- CONTROLS: left corner arrows; right corner cluster attack-left, (vertical jump & crouch) -->
+  <div class="controls">
+    <div class="left-corner">
       <button id="btnLeft" class="corner-btn" aria-label="Left">
-        <!-- left arrow icon -->
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 6L9 12l6 6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <!-- left icon -->
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none"><path d="M15 6L9 12l6 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <button id="btnRight" class="corner-btn" aria-label="Right">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 6l6 6-6 6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none"><path d="M9 6l6 6-6 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
 
     <div style="flex:1"></div>
 
-    <div class="right-corner" style="pointer-events:auto">
-      <div class="vert-stack" style="align-items:flex-end;margin-bottom:6px">
-        <button id="btnJump" class="vert-btn" aria-label="Jump">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 20V8" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M6 14l6-6 6 6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="right-corner" style="align-items:flex-end">
+      <!-- attack button now LEFT of jump/crouch -->
+      <div style="display:flex;gap:10px;align-items:flex-end">
+        <button id="btnAttack" class="attack-circle" aria-label="Attack">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="#fff"><path d="M3 21l18-9L3 3v7l12 2-12 2v7z"/></svg>
         </button>
-        <button id="btnCrouch" class="vert-btn" aria-label="Crouch">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12h16" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M8 16h8" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
-        </button>
-      </div>
 
-      <button id="btnAttack" class="attack-circle" aria-label="Attack">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 21l18-9L3 3v7l12 2-12 2v7z" fill="#fff"></path></svg>
-      </button>
+        <div class="vert-stack" style="margin-bottom:6px">
+          <button id="btnJump" class="corner-btn" aria-label="Jump">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M12 20V8" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><path d="M6 14l6-6 6 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="btnCrouch" class="corner-btn" aria-label="Crouch">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M4 12h16" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><path d="M8 16h8" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- TOAST -->
-  <div id="toast" role="status" aria-live="polite">Selamat datang — gunakan kontrol di pojok!</div>
+  <div id="toast" role="status" aria-live="polite">Game siap</div>
 
-  <script>
-  /* ================== PROTECTIONS ================== */
-  // Prevent default touchmove (no page scroll)
-  window.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
+<script>
+/* ================== UTILITIES & PROTECTIONS LIST ==================
+We will implement 15 protections in code:
+1) Input debounce & cooldown for attack/jump (attackCooldownMs, jumpCooldownMs)
+2) Action-lock for non-interruptible states (attack/hurt/die)
+3) Frame-index safe checks before drawing
+4) Fallback sprite mapping if missing
+5) Clamp velocities to max limits
+6) Minimum state duration to prevent flicker
+7) Pause input until minimum sprites loaded
+8) Collision resolution with separate-axis separation (AABB)
+9) NaN/Infinity checks (reset to safe values)
+10) Overlay blocking input when rotate/overlay active
+11) Single-pointer tracking to avoid multi-touch edge cases
+12) Limit queued input actions to 1 (prevent spam)
+13) Try/catch around main loop to prevent fatal crash
+14) Prevent pointer default scroll/drag on window
+15) Remove external watermark heuristically (best-effort)
+=========================================================== */
 
-  // Prevent context menu and drag
-  window.addEventListener('contextmenu', e => e.preventDefault());
-  window.addEventListener('dragstart', e => e.preventDefault());
+const byId = id => document.getElementById(id);
+const toast = byId('toast');
+function showToast(msg, t=1400){ toast.textContent = msg; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), t); }
 
-  // Small utility
-  const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
-  const byId = id => document.getElementById(id);
-  const toast = byId('toast');
-  function showToast(msg, t=1800){
-    toast.textContent = msg;
-    toast.classList.add('show');
-    setTimeout(()=>toast.classList.remove('show'), t);
+/* Prevent default mobile scroll */
+window.addEventListener('touchmove', e => e.preventDefault(), { passive:false });
+window.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ORIENTATION / FULLSCREEN overlay */
+const rotateOverlay = byId('rotateOverlay');
+const btnFullLock = byId('btnFullLock'), btnDismiss = byId('btnDismiss');
+
+function isPortrait(){ return window.innerHeight > window.innerWidth; }
+function showOverlay(){ rotateOverlay.classList.remove('hidden'); rotateOverlay.style.display='flex'; }
+function hideOverlay(){ rotateOverlay.classList.add('hidden'); rotateOverlay.style.display='none'; }
+
+btnFullLock.addEventListener('click', ()=>{
+  const el = document.documentElement;
+  if(el.requestFullscreen) el.requestFullscreen().then(()=>{ try{ screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); }catch(e){} });
+  else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  setTimeout(()=>{ if(!isPortrait()) hideOverlay(); }, 600);
+});
+btnDismiss.addEventListener('click', ()=>{ if(!isPortrait()) hideOverlay(); else showToast('Silakan putar perangkat ke landscape'); });
+
+window.addEventListener('resize', ()=>{ if(isPortrait()) showOverlay(); else hideOverlay();});
+window.addEventListener('orientationchange', ()=> setTimeout(()=>{ if(isPortrait()) showOverlay(); else hideOverlay(); },250) );
+if(isPortrait()) showOverlay(); else hideOverlay();
+
+/* CANVAS SETUP */
+const canvas = byId('gameCanvas');
+const ctx = canvas.getContext('2d', { alpha:false });
+let W = window.innerWidth, H = window.innerHeight;
+function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize); resize();
+
+/* WORLD & OBSTACLES (for collision testing) */
+const GROUND_Y = Math.round(H * 0.78);
+const obstacles = [
+  // sample obstacle: rectangle platform
+  { x: 520, y: GROUND_Y - 80, w: 240, h: 16 },
+  { x: 920, y: GROUND_Y - 150, w: 160, h: 16 },
+];
+
+/* HERO */
+const hero = {
+  x: 180, y: GROUND_Y, vx:0, vy:0, dir:1,
+  w:48, h:64,
+  state:'idle', frame:0, frameTick:0, onGround:true, hp:100, stateSince:0
+};
+
+/* ANIMATIONS — use states matching filenames you uploaded */
+const ANIMS = {
+  'idle':4,'idle-2':4,'run':6,'jump':4,'fall':2,'attack1':5,'attack2':6,'attack3':6,
+  'hurt':3,'die':7,'crouch':4,'slide':2,'smrslt':4,'crnr-clmb':5,'crnr-jmp':3
+};
+
+/* Load sprites with robust fallback */
+const SPRITES = {};
+let totalToLoad = 0, loadedCount = 0;
+for(const k in ANIMS){
+  SPRITES[k] = [];
+  for(let i=0;i<ANIMS[k];i++){
+    totalToLoad++;
+    const img = new Image();
+    const fname = `asset/hero/adventurer-${k}-${String(i).padStart(2,'0')}.png`;
+    img.onload = ()=> loadedCount++;
+    img.onerror = ()=> { loadedCount++; console.warn('img load fail', fname); };
+    img.src = fname;
+    SPRITES[k].push(img);
   }
+}
 
-  /* ================== ORIENTATION & FULLSCREEN HANDLING ================== */
-  const rotateOverlay = byId('rotateOverlay');
-  const btnFullLock = byId('btnFullLock');
-  const btnDismiss = byId('btnDismiss');
+// Protection 7: pause input until some sprites loaded (min threshold)
+const SPRITE_MIN_THRESHOLD = Math.min(6, totalToLoad);
+let spriteReady = false;
+const spriteWaitStart = performance.now();
+const SPRITE_WAIT_TIMEOUT = 1500;
+(function waitSprites(){
+  if(loadedCount >= SPRITE_MIN_THRESHOLD || performance.now() - spriteWaitStart > SPRITE_WAIT_TIMEOUT){
+    spriteReady = true;
+  } else setTimeout(waitSprites, 80);
+})();
 
-  function showRotateOverlay(){ rotateOverlay.classList.remove('hidden'); rotateOverlay.style.pointerEvents='auto'; }
-  function hideRotateOverlay(){ rotateOverlay.classList.add('hidden'); rotateOverlay.style.pointerEvents='none'; }
+/* INPUT system with protections */
+const INPUT = { left:false, right:false, jump:false, attack:false, crouch:false };
+let activePointerId = null; // protection 11: single pointer
+let lastAttackAt = 0, lastJumpAt = 0; // protection 1: cooldowns
+const attackCooldownMs = 420, jumpCooldownMs = 220;
+let queuedAction = null; // protection 12: limit queued actions
 
-  function isPortrait(){ return window.innerHeight > window.innerWidth; }
+// Protection 10: block inputs if overlay visible
+function inputAllowed(){ return spriteReady && rotateOverlay.classList.contains('hidden'); }
 
-  function tryLockLandscape(){
-    if(screen.orientation && screen.orientation.lock){
-      screen.orientation.lock('landscape').catch(()=>{/*ignore*/});
-    } else if(window.screen && window.screen.lockOrientation){
-      try{ window.screen.lockOrientation('landscape'); }catch(e){}
-    }
-  }
-
-  function enterFullscreenAndLock(){
-    const el = document.documentElement;
-    if(el.requestFullscreen) el.requestFullscreen().then(()=>{ tryLockLandscape(); }).catch(()=>{});
-    else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-  }
-
-  btnFullLock.addEventListener('click', ()=>{
-    enterFullscreenAndLock();
-    showToast('Mencoba aktifkan fullscreen & lock landscape...');
-    setTimeout(()=>{ if(!isPortrait()) hideRotateOverlay(); }, 600);
+/* Unified pointer binding util (protection: pointer capture + single pointer) */
+function bindBtn(id, onDown, onUp){
+  const el = byId(id);
+  if(!el) return;
+  el.addEventListener('pointerdown', (ev)=>{
+    if(!inputAllowed()) return;
+    if(activePointerId !== null && activePointerId !== ev.pointerId) return; // ignore multi pointers
+    activePointerId = ev.pointerId;
+    el.setPointerCapture && el.setPointerCapture(ev.pointerId);
+    el.classList.add('pressed');
+    try{ onDown(ev); }catch(e){ console.error(e); }
   });
-
-  btnDismiss.addEventListener('click', ()=>{
-    // user forced dismiss; keep overlay hidden but still require rotate check
-    if(!isPortrait()) hideRotateOverlay();
-    else showToast('Silakan putar device untuk bermain',2000);
+  el.addEventListener('pointerup', (ev)=>{
+    if(activePointerId !== ev.pointerId) return;
+    el.releasePointerCapture && el.releasePointerCapture(ev.pointerId);
+    activePointerId = null;
+    el.classList.remove('pressed');
+    try{ onUp(ev); }catch(e){ console.error(e); }
   });
+  el.addEventListener('pointercancel', (ev)=>{ if(activePointerId === ev.pointerId){ activePointerId = null; el.classList.remove('pressed'); onUp(ev);} });
+  el.addEventListener('pointerleave', (ev)=>{ if(activePointerId === ev.pointerId){ el.classList.remove('pressed'); }});
+}
 
-  function checkAndToggleOverlay(){
-    if(isPortrait()){
-      showRotateOverlay();
+/* bind controls */
+bindBtn('btnLeft', ()=>INPUT.left=true, ()=>INPUT.left=false);
+bindBtn('btnRight', ()=>INPUT.right=true, ()=>INPUT.right=false);
+bindBtn('btnJump', ()=>{
+  if(!inputAllowed()) return;
+  const now = performance.now();
+  if(now - lastJumpAt < jumpCooldownMs) return;
+  lastJumpAt = now;
+  INPUT.jump = true;
+}, ()=>{ INPUT.jump = false; });
+
+bindBtn('btnAttack', ()=>{
+  if(!inputAllowed()) return;
+  const now = performance.now();
+  if(now - lastAttackAt < attackCooldownMs) return;
+  lastAttackAt = now;
+  INPUT.attack = true;
+  // queue limited
+  queuedAction = 'attack';
+}, ()=>{ INPUT.attack = false; queuedAction = null; });
+
+bindBtn('btnCrouch', ()=>INPUT.crouch = true, ()=>INPUT.crouch = false);
+
+/* Keyboard (desktop) */
+window.addEventListener('keydown', (e)=>{
+  if(!inputAllowed()) return;
+  if(e.repeat) return;
+  if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = true;
+  if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = true;
+  if((e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') && (performance.now() - lastJumpAt > jumpCooldownMs)){
+    lastJumpAt = performance.now(); INPUT.jump = true;
+  }
+  if(e.key === 'j' || e.key === 'k') {
+    if(performance.now() - lastAttackAt > attackCooldownMs){ lastAttackAt = performance.now(); INPUT.attack = true; queuedAction='attack'; }
+  }
+  if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = true;
+});
+window.addEventListener('keyup', (e)=>{
+  if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = false;
+  if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = false;
+  if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = false;
+  if(e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') INPUT.jump = false;
+});
+
+/* PROTECTION 5: clamp velocities */
+const VX_MAX = 12, VY_MAX = 40, VY_MIN = -28;
+
+/* PROTECTION 6: min state durations (ms) to avoid flicker) */
+const MIN_STATE_DUR = {
+  'attack1': 300, 'attack2': 300, 'attack3':300, 'hurt': 400, 'die': 99999, 'jump': 180, 'fall': 120
+};
+
+/* SAFETY helpers */
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function safeNumber(v,def=0){ return (isFinite(v) && !isNaN(v)) ? v : def; }
+
+/* Collision helpers (AABB) */
+function rectOfHero(){
+  // hero box anchored by bottom-center
+  return { x: hero.x - hero.w/2, y: hero.y - hero.h, w: hero.w, h: hero.h };
+}
+function rectOverlap(a,b){
+  return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
+}
+function resolveAABBCollision(h, obs){
+  // separate axis resolution
+  const overlapX = Math.min(h.x + h.w - obs.x, obs.x + obs.w - h.x);
+  const overlapY = Math.min(h.y + h.h - obs.y, obs.y + obs.h - h.y);
+  if(overlapX <= 0 || overlapY <= 0) return false;
+  if(overlapX < overlapY){
+    // resolve X
+    if(h.x + h.w/2 < obs.x + obs.w/2){
+      hero.x -= overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1);
     } else {
-      hideRotateOverlay();
+      hero.x += overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1);
     }
-  }
-  window.addEventListener('resize', checkAndToggleOverlay);
-  window.addEventListener('orientationchange', ()=>{ setTimeout(checkAndToggleOverlay,250) });
-  checkAndToggleOverlay();
-
-  /* ================== CANVAS + GAME CORE ================== */
-  const canvas = byId('gameCanvas');
-  const ctx = canvas.getContext('2d', { alpha:false });
-  let W = window.innerWidth, H = window.innerHeight;
-  function resize(){
-    W = canvas.width = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-  }
-  window.addEventListener('resize', resize);
-  resize();
-
-  // Ground & camera
-  const GROUND_Y = Math.round(H * 0.78);
-  const CAMERA = { x:0, y:0, shake:0 };
-
-  // HERO: robust finite-state with priorities
-  const hero = {
-    x: 200, y: GROUND_Y, vx:0, vy:0, w:48, h:64, dir:1,
-    state: 'idle', stateSince:0, frame:0, frameTick:0, onGround:true,
-    hp:100
-  };
-
-  // animation definitions driven by filenames in asset/hero/
-  const ANIMS = {
-    idle: {frames:4, loop:true},
-    'idle-2':{frames:4,loop:true},
-    run: {frames:6, loop:true},
-    jump: {frames:4, loop:false},
-    fall: {frames:2, loop:true},
-    attack1: {frames:5, loop:false},
-    attack2: {frames:6, loop:false},
-    attack3: {frames:6, loop:false},
-    hurt: {frames:3, loop:false},
-    die: {frames:7, loop:false},
-    crouch: {frames:4, loop:true},
-    'crnr-jmp':{frames:3,loop:false},
-    'crnr-clmb':{frames:5,loop:false},
-    slide:{frames:2,loop:true},
-    smrslt:{frames:4,loop:false},
-    run2:{frames:6,loop:true}
-  };
-
-  // Load sprites robustly and track when ready
-  const SPRITES = {};
-  let totalToLoad = 0, loadedCount = 0;
-  for(const key in ANIMS){
-    SPRITES[key]=[];
-    for(let i=0;i<ANIMS[key].frames;i++){
-      const img = new Image();
-      const fname = `asset/hero/adventurer-${key}-${String(i).padStart(2,'0')}.png`;
-      totalToLoad++;
-      img.onload = ()=>{ loadedCount++; };
-      img.onerror = ()=>{ /* fallback: transparent */ loadedCount++; console.warn('failed load', fname); };
-      img.src = fname;
-      SPRITES[key].push(img);
+    return true;
+  } else {
+    // resolve Y
+    if(h.y + h.h/2 < obs.y + obs.h/2){
+      // hero above obstacle
+      hero.y -= overlapY + 0.5; hero.vy = 0; hero.onGround = true;
+    } else {
+      // hero below obstacle (bump head)
+      hero.y += overlapY + 0.5; hero.vy = Math.max(hero.vy, 0);
     }
+    return true;
   }
+}
 
-  // safety: if some anims not present, map to idle frames
-  function ensureSprites(){
-    for(const k in ANIMS){
-      if(!SPRITES[k] || SPRITES[k].length < ANIMS[k].frames){
-        SPRITES[k] = SPRITES['idle'] ? SPRITES['idle'] : SPRITES[k];
+/* STATE machine with priority & protections */
+const PRIORITY = { die:90, hurt:80, attack1:70, attack2:70, attack3:70, jump:60, fall:50, crouch:40, run:30, idle:10 };
+function canChangeState(next){
+  const curr = hero.state;
+  if(curr === next) return false;
+  if(curr === 'die') return false;
+  const now = performance.now();
+  if(MIN_STATE_DUR[curr] && now - hero.stateSince < MIN_STATE_DUR[curr]) return false;
+  const curP = PRIORITY[curr] || 0, nextP = PRIORITY[next] || 0;
+  if(nextP < curP) return false;
+  return true;
+}
+function setState(next){
+  if(!canChangeState(next)) return false;
+  hero.state = next; hero.frame = 0; hero.frameTick = 0; hero.stateSince = performance.now();
+  return true;
+}
+
+/* main update loop (with try/catch protection) */
+let last = performance.now();
+function update(dt){
+  try {
+    // protection 9: NaN safety
+    hero.x = safeNumber(hero.x, 200); hero.y = safeNumber(hero.y, GROUND_Y);
+    hero.vx = safeNumber(hero.vx, 0); hero.vy = safeNumber(hero.vy, 0);
+
+    // pause inputs until sprite ready
+    if(!spriteReady){
+      hero.vx *= 0.8; hero.vy += 0.6; // gentle physics but no inputs
+    } else {
+      // input handling with priority
+      // Attack priority
+      if(INPUT.attack && performance.now() - hero.stateSince > 60){
+        if(setState('attack1')) { /* attack started */ }
+      } else if(!hero.onGround){
+        if(hero.vy < -1) setState('jump'); else setState('fall');
+      } else if(INPUT.crouch){
+        setState('crouch');
+      } else if(INPUT.left || INPUT.right){
+        hero.dir = INPUT.right ? 1 : -1;
+        setState('run');
+        // accelerate
+        hero.vx += (INPUT.right ? 1 : -1) * 0.9;
+      } else {
+        setState('idle');
+        hero.vx *= 0.82;
+      }
+
+      // jump consumption (single impulse)
+      if(INPUT.jump && hero.onGround){
+        hero.vy = -13.2; hero.onGround = false; setState('jump'); INPUT.jump = false;
       }
     }
-  }
 
-  // Controls: unified input handling, debounced, priority-based state changes
-  const INPUT = { left:false, right:false, jump:false, attack:false, crouch:false };
-  let inputLock = false; // lock to avoid double triggers
+    // physics
+    hero.vy += 0.66;
+    // clamps (protection 5)
+    hero.vx = clamp(hero.vx, -VX_MAX, VX_MAX);
+    hero.vy = clamp(hero.vy, VY_MIN, VY_MAX);
 
-  // Attach touch + mouse + keyboard
-  function bindBtn(id, onDown, onUp){
-    const el = byId(id);
-    if(!el) return;
-    // pointer events unify mouse/touch
-    el.addEventListener('pointerdown', (e)=>{
-      e.preventDefault(); el.classList.add('pressed'); onDown(e);
-    });
-    el.addEventListener('pointerup', (e)=>{ e.preventDefault(); el.classList.remove('pressed'); onUp(e); });
-    el.addEventListener('pointercancel', (e)=>{ e.preventDefault(); el.classList.remove('pressed'); onUp(e); });
-    el.addEventListener('pointerleave', (e)=>{ /* keep state on leave if pressed? remove */ el.classList.remove('pressed'); onUp(e); });
-  }
-
-  bindBtn('btnLeft', ()=>{ INPUT.left = true }, ()=>{ INPUT.left = false });
-  bindBtn('btnRight', ()=>{ INPUT.right = true }, ()=>{ INPUT.right = false });
-  bindBtn('btnJump', ()=>{ if(hero.onGround) { INPUT.jump = true } }, ()=>{ INPUT.jump = false });
-  bindBtn('btnAttack', ()=>{ INPUT.attack = true; setTimeout(()=>INPUT.attack=false, 120); }, ()=>{ INPUT.attack=false });
-  bindBtn('btnCrouch', ()=>{ INPUT.crouch = true; }, ()=>{ INPUT.crouch = false; });
-
-  // Keyboard
-  window.addEventListener('keydown', (e)=>{
-    if(e.repeat) return;
-    if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = true;
-    if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = true;
-    if(e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') INPUT.jump = true;
-    if(e.key === 'j') { INPUT.attack = true; setTimeout(()=>INPUT.attack=false,140); }
-    if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = true;
-  });
-  window.addEventListener('keyup', (e)=>{
-    if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = false;
-    if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = false;
-    if(e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') INPUT.jump = false;
-    if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = false;
-  });
-
-  // Protective update: clamp hero area inside world and prevent NaN
-  function safeClampHero(){
-    hero.x = clamp(hero.x, 32, Math.max(400, W - 32));
-    if(!isFinite(hero.x)) hero.x = 200;
-    if(!isFinite(hero.y)) hero.y = GROUND_Y;
-  }
-
-  // State machine for hero (priority rules)
-  function setState(newState){
-    if(hero.state === newState) return;
-    // don't interrupt die
-    if(hero.state === 'die') return;
-    // priority: hurt/die > attack > jump/fall > crouch > run > idle
-    const priority = { die:90, hurt:80, attack1:70, attack2:70, attack3:70, jump:60, fall:50, crouch:40, run:30, idle:10 };
-    const currP = priority[hero.state] || 0;
-    const nextP = priority[newState] || 0;
-    if(nextP < currP && !(hero.state === 'attack1' && newState === 'idle')) return; // prevent low-priority interrupt
-    hero.state = newState;
-    hero.stateSince = performance.now();
-    hero.frame = 0;
-    hero.frameTick = 0;
-  }
-
-  /* ========== GAME PHYSICS & LOGIC ========== */
-  const GRAVITY = 0.65;
-  const FRICTION = 0.88;
-
-  function update(dt){
-    // ensure sprites loaded fallback
-    if(loadedCount >= totalToLoad) ensureSprites();
-
-    // Movement input
-    let moveX = 0;
-    if(INPUT.left) moveX -= 1;
-    if(INPUT.right) moveX += 1;
-
-    // Attack input: immediate priority
-    if(INPUT.attack){
-      setState('attack1');
-      hero.vx = 0;
-      // small nudge for attack motion
-      hero.vx += hero.dir * 1.0;
-    } else if(!hero.onGround){
-      // mid-air: jump/fall
-      if(hero.vy < -1) setState('jump');
-      else setState('fall');
-    } else if(INPUT.crouch){
-      setState('crouch');
-      hero.vx *= 0.6;
-    } else if(moveX !== 0){
-      // normal run
-      hero.dir = moveX > 0 ? 1 : -1;
-      setState('run');
-      hero.vx += moveX * 0.8;
-    } else {
-      setState('idle');
-      hero.vx *= 0.8;
-    }
-
-    // Jump trigger (onGround)
-    if(INPUT.jump && hero.onGround){
-      hero.vy = -13.2;
-      hero.onGround = false;
-      setState('jump');
-      INPUT.jump = false; // consume single
-    }
-
-    // Apply gravity
-    hero.vy += GRAVITY;
     hero.x += hero.vx;
     hero.y += hero.vy;
 
-    // friction
-    hero.vx *= FRICTION;
-
-    // ground collision
+    // base ground
     if(hero.y >= GROUND_Y){
       if(!hero.onGround && Math.abs(hero.vy) > 18){
-        // heavy fall => hurt
-        hero.hp = clamp(hero.hp - 10, 0, 100);
+        // heavy landing => hurt
+        hero.hp = clamp(hero.hp - 8, 0, 100);
         setState('hurt');
       }
-      hero.y = GROUND_Y;
-      hero.vy = 0;
-      hero.onGround = true;
+      hero.y = GROUND_Y; hero.vy = 0; hero.onGround = true;
     } else hero.onGround = false;
 
-    // clamp coords
-    safeClampHero();
+    // obstacle collisions (protection 8)
+    const hRect = rectOfHero();
+    for(const obs of obstacles){
+      if(rectOverlap(hRect, obs)) {
+        resolveAABBCollision(hRect, obs);
+      }
+    }
 
-    // animation frame advance robustly (timing-based)
-    hero.frameTick += Math.max(1, Math.round(dt / 16));
-    const anim = ANIMS[hero.state] || ANIMS['idle'];
-    const speedFactor = (hero.state === 'run') ? 4 : (hero.state === 'attack1' ? 6 : 8);
-    const ticksPerFrame = speedFactor;
+    // clamp hero inside world bounds (protection 1)
+    hero.x = clamp(hero.x, 32, Math.max(600, W - 32));
+
+    // animation tick: protection 2 & 3 (frame safe checks)
+    hero.frameTick += Math.max(1, Math.floor(dt / 16));
+    const animMeta = ANIMS[hero.state] || ANIMS['idle'];
+    const ticksPerFrame = (hero.state === 'run' ? 4 : (hero.state.startsWith('attack') ? 6 : 8));
     if(hero.frameTick >= ticksPerFrame){
       hero.frameTick = 0;
       hero.frame++;
-      if(hero.frame >= anim.frames){
-        if(anim.loop) hero.frame = 0;
-        else {
-          // on non-loop finishing states, decide next state
-          if(hero.state.startsWith('attack')) setState('idle');
-          else if(hero.state === 'jump' || hero.state === 'fall') setState(hero.onGround ? 'idle' : 'fall');
-          else setState('idle');
+      if(hero.frame >= animMeta){
+        if(animMeta && animMeta > 0){
+          // finalize non-looping
+          const loopStates = ['idle','run','fall','crouch'];
+          if(loopStates.includes(hero.state)) hero.frame = hero.frame % animMeta;
+          else {
+            // return to idle or appropriate state
+            if(hero.onGround) setState('idle'); else setState('fall');
+          }
+        } else {
+          hero.frame = 0;
         }
       }
     }
+
+    // protection 11: reset queuedAction after processing
+    if(queuedAction && queuedAction === 'attack' && hero.state !== 'attack1') queuedAction = null;
+
+    // protection 9 ensure safe numbers
+    hero.x = safeNumber(hero.x, 200); hero.y = safeNumber(hero.y, GROUND_Y);
+
+  } catch(err){
+    console.error('update error', err);
+    // protection 13: don't crash loop - attempt safe reset
+    hero.vx = 0; hero.vy = 0; hero.state = 'idle'; hero.frame = 0;
   }
+}
 
-  /* ========== RENDER ========== */
-  function draw(){
+/* DRAW with protections */
+function draw(){
+  try {
+    ctx.clearRect(0,0,W,H);
     // background
-    ctx.fillStyle = '#101113';
-    ctx.fillRect(0,0,W,H);
+    const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#242628'); g.addColorStop(1,'#101214');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 
-    // horizon / decorative
-    const skyGrad = ctx.createLinearGradient(0,0,0,H);
-    skyGrad.addColorStop(0, '#2a2d31');
-    skyGrad.addColorStop(1, '#141516');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0,0,W,H);
-
-    // simple parallax horizon
-    ctx.fillStyle = '#222428';
-    ctx.fillRect(0, GROUND_Y + 12, W, H - GROUND_Y - 12);
-
-    // ground tiles
-    ctx.fillStyle = '#2f3134';
-    for(let i=0;i<W+200;i+=56){
-      ctx.fillRect((i + (Math.sin(Date.now()/800 + i)*6))% (W+200) - 60, GROUND_Y + 18, 36, 10);
+    // obstacles
+    for(const obs of obstacles){
+      ctx.fillStyle = '#2b2c2f';
+      ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+      ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
     }
 
-    // hero sprite draw
-    const animSet = SPRITES[hero.state] && SPRITES[hero.state][hero.frame] ? SPRITES[hero.state] : (SPRITES['idle'] || []);
-    const img = animSet[hero.frame] || animSet[0];
+    // hero draw (protection 3 & 4 & 15)
+    const animSet = SPRITES[hero.state] && SPRITES[hero.state].length ? SPRITES[hero.state] : (SPRITES['idle'] || []);
+    const frameIndex = hero.frame % (animSet.length || 1);
+    const img = animSet[frameIndex] || null;
     if(img && img.complete && img.naturalWidth){
-      const scale = Math.max(1.6, Math.min(2.2, (H/720) * 2));
+      const scale = Math.max(1.4, Math.min(2.0, (H/720) * 1.9));
       const w = img.width * scale, h = img.height * scale;
       ctx.save();
       ctx.translate(hero.x, hero.y);
       ctx.scale(hero.dir, 1);
-      ctx.drawImage(img, -w/2, -h, w, h);
+      try {
+        ctx.drawImage(img, -w/2, -h, w, h);
+      } catch(e){
+        // fallback: rectangle when drawImage fails (protection 3)
+        ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h);
+      }
       ctx.restore();
     } else {
-      // placeholder box if sprite missing
-      ctx.save();
-      ctx.translate(hero.x, hero.y);
-      ctx.fillStyle = '#8a8d90';
-      ctx.fillRect(-20, -48, 40, 48);
+      ctx.save(); ctx.translate(hero.x, hero.y);
+      ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h);
       ctx.restore();
     }
 
-    // simple HUD overlay shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.12)';
-    ctx.fillRect(0,0,W,48);
+    // overlays like HUD shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(0,0,W,48);
+
+  } catch(err){
+    console.error('draw error', err);
   }
+}
 
-  /* ========== GAME LOOP (time-based) ========== */
-  let last = performance.now();
-  function tick(now){
-    const dt = now - last;
-    last = now;
-    update(dt);
-    draw();
-    requestAnimationFrame(tick);
+/* GAME LOOP (time-based) */
+let lastT = performance.now();
+function loop(now){
+  try {
+    const dt = now - lastT; lastT = now;
+    update(dt); draw();
+  } catch(e){ console.error('main loop error', e); }
+  requestAnimationFrame(loop);
+}
+
+// start once some sprites loaded (protection 7)
+(function startWhenReady(){
+  if(spriteReady || performance.now() - spriteWaitStart > SPRITE_WAIT_TIMEOUT){
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+    showToast('Siap! Gunakan kontrol pojok untuk main');
+  } else {
+    setTimeout(startWhenReady, 80);
   }
+})();
 
-  // wait until at least some sprites loaded (or timeout)
-  const spriteWaitStart = performance.now();
-  const SPRITE_WAIT_TIMEOUT = 1500;
-  (function waitAndStart(){
-    if(loadedCount >= Math.min(totalToLoad, 6) || performance.now() - spriteWaitStart > SPRITE_WAIT_TIMEOUT){
-      // start loop
-      last = performance.now();
-      requestAnimationFrame(tick);
-      showToast('Game siap — gunakan kontrol pojok!');
-    } else {
-      setTimeout(waitAndStart, 80);
-    }
-  })();
+/* update UI HP bar */
+setInterval(()=>{ const hb = byId('hpFill'); if(hb) hb.style.width = hero.hp + '%'; }, 120);
 
-  /* ========== ROBUSTNESS: handle visibilitychange, pause on blur ========== */
-  document.addEventListener('visibilitychange', ()=>{
-    if(document.hidden) {
-      // pause inputs
-      INPUT.left = INPUT.right = INPUT.attack = INPUT.jump = INPUT.crouch = false;
-      showToast('Game berhenti (background)');
-    } else {
-      showToast('Kembali main');
-    }
-  });
-
-  window.addEventListener('blur', ()=>{ INPUT.left = INPUT.right = INPUT.attack = INPUT.jump = INPUT.crouch = false; });
-
-  /* ========== UI SYNC: HP bar update ========= */
-  const hpFillEl = byId('hpFill');
-  setInterval(()=> {
-    hpFillEl.style.width = hero.hp + '%';
-  }, 120);
-
-  /* ========== REMOVE ANY WATERMARK ELEMENTS (if any) ========= */
-  // If somehow an external watermark element is injected, try to remove it by heuristics (classless badges)
-  setTimeout(()=>{
-    const imgs = Array.from(document.querySelectorAll('img,div'));
-    imgs.forEach(el=>{
-      if(el.innerText && /apkpure/i.test(el.innerText)){ el.remove(); }
+/* protection 15: remove watermark if any */
+setTimeout(()=>{
+  Array.from(document.querySelectorAll('img,div')).forEach(el=>{
+    try{
+      if(el.innerText && /apkpure/i.test(el.innerText)) el.remove();
       if(el.src && typeof el.src === 'string' && /apkpure/i.test(el.src)) el.remove();
-    });
-  }, 800);
+    }catch(e){}
+  });
+}, 900);
 
-  /* ========== Accessibility: keyboard hints ========= */
-  // On desktop show hint toast once
-  if(window.innerWidth > 900) setTimeout(()=>showToast('Gunakan A / D atau Panah Kiri/Kanan untuk bergerak, Space untuk lompat, J untuk serang'), 1400);
-  </script>
+/* safety: clear inputs when tab hidden */
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ INPUT.left = INPUT.right = INPUT.attack = INPUT.jump = INPUT.crouch = false; } });
+
+/* show hint for desktop */
+if(window.innerWidth > 900) setTimeout(()=> showToast('Gunakan A/D atau Panah ← → untuk bergerak, Space untuk lompat, J untuk serang'), 1200);
+</script>
 </body>
 </html>
