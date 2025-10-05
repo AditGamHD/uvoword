@@ -13,13 +13,6 @@
   *{box-sizing:border-box}
   html,body{height:100%;width:100%;margin:0;padding:0;overflow:hidden;background:var(--bg);color:#fff;font-family:Inter,system-ui,Arial;}
   canvas{display:block;width:100%;height:100%;background:linear-gradient(180deg,#202226,#121315)}
-  #rotateOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;background:rgba(3,3,4,0.94);padding:20px;text-align:center}
-  #rotateOverlay.hidden{display:none}
-  .rotate-box{background:linear-gradient(180deg,#0c0d0e,#121314);padding:20px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);max-width:420px}
-  .rotate-title{font-weight:700;font-size:18px;margin-bottom:8px}
-  .rotate-desc{color:var(--muted);margin-bottom:12px;font-size:14px}
-  .btn{padding:10px 14px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
-  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
   .hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;z-index:800;pointer-events:none}
   .hp-box{pointer-events:auto;background:linear-gradient(180deg,#1b1c1e,#161718);padding:8px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);display:flex;gap:10px;align-items:center}
   .hp-bar{width:160px;height:18px;background:#232425;border-radius:10px;overflow:hidden}
@@ -82,8 +75,19 @@
 
   <div id="toast" role="status" aria-live="polite">Game siap</div>
 
-  <div id="rotateOverlay">
-    <div class="rotate-box">
+  <!-- Improved overlay (desktop-aware, dismissable) -->
+  <style>
+    #rotateOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;background:rgba(3,3,4,0.94);padding:20px;text-align:center}
+    #rotateOverlay.hidden{display:none !important; pointer-events:none !important; opacity:0; transition:opacity .18s}
+    .rotate-box{background:linear-gradient(180deg,#0c0d0e,#121314);padding:20px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);max-width:420px}
+    .rotate-title{font-weight:700;font-size:18px;margin-bottom:8px}
+    .rotate-desc{color:var(--muted);margin-bottom:12px;font-size:14px}
+    .btn{padding:10px 14px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+  </style>
+
+  <div id="rotateOverlay" aria-hidden="false">
+    <div class="rotate-box" role="dialog" aria-label="Rotate device">
       <div class="rotate-title">Mohon Rotasi Device Anda</div>
       <div class="rotate-desc">Aktifkan fullscreen lalu putar perangkat ke <strong>landscape</strong>. Game butuh orientasi landscape untuk kontrol optimal.</div>
       <div style="display:flex;gap:8px;justify-content:center">
@@ -115,122 +119,80 @@ const byId = id => document.getElementById(id);
 const toast = byId('toast');
 function showToast(msg, t=1400){ toast.textContent = msg; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), t); }
 
+/* Overlay logic (desktop-aware) */
+(function(){
+  const overlay = document.getElementById('rotateOverlay');
+  const btnFullLock = document.getElementById('btnFullLock');
+  const btnDismiss = document.getElementById('btnDismiss');
+  function isPortrait(){ try{ if(window.matchMedia){ if(window.matchMedia('(orientation: portrait)').matches) return true; } }catch(e){} return window.innerHeight > window.innerWidth; }
+  function isDesktop(){ try{ if(window.matchMedia && window.matchMedia('(pointer: fine)').matches) return true; }catch(e){} const platform = (navigator.platform || '').toLowerCase(); if(platform.indexOf('win') !== -1 || platform.indexOf('mac') !== -1 || platform.indexOf('linux') !== -1) return true; if(window.innerWidth >= 900) return true; return false; }
+  function showOverlay(){ overlay.classList.remove('hidden'); overlay.setAttribute('aria-hidden','false'); }
+  function hideOverlay(){ overlay.classList.add('hidden'); overlay.setAttribute('aria-hidden','true'); }
+  function updateOverlay(){ if(isDesktop()){ hideOverlay(); return; } if(isPortrait()){ showOverlay(); } else { hideOverlay(); } }
+  btnFullLock.addEventListener('click', async ()=>{ const el = document.documentElement; try{ if(el.requestFullscreen) await el.requestFullscreen(); else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen(); }catch(e){} try{ if(screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); }catch(e){} setTimeout(updateOverlay, 600); });
+  btnDismiss.addEventListener('click', ()=>{ hideOverlay(); showToast && typeof showToast === 'function' && showToast('Overlay ditutup — kontrol aktif'); });
+  window.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') { hideOverlay(); } });
+  window.addEventListener('resize', updateOverlay);
+  window.addEventListener('orientationchange', ()=> setTimeout(updateOverlay, 220));
+  setTimeout(updateOverlay, 60);
+})();
+
 const username = localStorage.getItem('uvo_user');
 if(!username){ alert('Tidak ada sesi. Silakan login terlebih dahulu.'); location.href = 'index.html'; throw new Error('not logged in'); }
 
-const mode = (localStorage.getItem('uvo_mode') || 'global'); // 'global' or 'room'
+const mode = (localStorage.getItem('uvo_mode') || 'global');
 const room = (localStorage.getItem('uvo_room') || '').toLowerCase();
-
 byId('modeName').textContent = mode === 'global' ? 'Global' : 'Room';
 byId('roomBadge').textContent = mode === 'room' ? ('#' + (room || 'n/a')) : '';
 
-/* determine base DB path */
 const BASE_PLAYERS_PATH = (mode === 'global') ? 'players' : ('rooms/' + (room || 'default') + '/players');
-const META_ROOM_PATH = (mode === 'room') ? ('rooms/' + (room || 'default') + '/meta') : null;
-
-const playersRef = db.ref(BASE_PLAYERS_PATH);
 let myPlayerRef = db.ref(BASE_PLAYERS_PATH + '/' + username);
+const playersRef = db.ref(BASE_PLAYERS_PATH);
 
 /* spawn points */
-const spawnGlobal = { x: 180, y: null }; // y resolved by GROUND_Y later
+let W = window.innerWidth, H = window.innerHeight;
+function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+
+const spawnGlobal = { x: 180, y: null };
 const spawnRoom = { x: 300, y: null };
 
 /* ensure onDisconnect cleanup */
 myPlayerRef.onDisconnect().remove().catch(()=>{});
 
-/* listen players list */
+/* players listener */
 let otherPlayers = {};
-playersRef.on('value', snap=>{
-  const val = snap.val() || {};
-  otherPlayers = {};
-  for(const k in val){
-    if(k === username) continue;
-    otherPlayers[k] = val[k];
-  }
-});
+playersRef.on('value', snap=>{ const val = snap.val() || {}; otherPlayers = {}; for(const k in val){ if(k === username) continue; otherPlayers[k] = val[k]; } });
 
-/* listen child_changed for HP/state to show effects and respawn triggers */
-playersRef.on('child_changed', snap => {
-  const key = snap.key;
-  const val = snap.val();
-  if(!val) return;
-  if(key === username){
-    // DB authoritative HP -> update local hero hp if changed externally
-    if(typeof val.hp !== 'undefined') hero.hp = val.hp;
-    if(val.state === 'die') {
-      // ensure local state reflects DB
-      hero.state = 'die';
-      hero.stateLock = true;
-    }
-  } else {
-    if(val.state === 'die'){
-      // remote died
-      showToast(`${key} eliminated`);
-    }
-  }
-});
+playersRef.on('child_changed', snap => { const key = snap.key; const val = snap.val(); if(!val) return; if(key === username){ if(typeof val.hp !== 'undefined') hero.hp = val.hp; if(val.state === 'die'){ hero.state = 'die'; hero.stateLock = true; } } else { if(val.state === 'die'){ showToast(`${key} eliminated`); } } });
 
-/* --- core game variables & canvas --- */
-const canvas = byId('gameCanvas');
+/* canvas setup */
+const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d', { alpha:false });
-let W = window.innerWidth, H = window.innerHeight;
-function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
-window.addEventListener('resize', resize); resize();
+window.addEventListener('resize', ()=>{ canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+resize();
 
-const GROUND_Y = Math.round(H * 0.78);
-spawnGlobal.y = GROUND_Y;
-spawnRoom.y = GROUND_Y;
+const GROUND_Y = Math.round(window.innerHeight * 0.78);
+spawnGlobal.y = GROUND_Y; spawnRoom.y = GROUND_Y;
 
-/* default obstacles (shared map) */
-const obstacles = [
-  { x: 520, y: GROUND_Y - 80, w: 240, h: 16 },
-  { x: 920, y: GROUND_Y - 150, w: 160, h: 16 },
-];
+/* obstacles */
+const obstacles = [ { x: 520, y: GROUND_Y - 80, w: 240, h: 16 }, { x: 920, y: GROUND_Y - 150, w: 160, h: 16 } ];
 
 /* hero (local) */
-const hero = {
-  x: (mode === 'global' ? spawnGlobal.x : spawnRoom.x),
-  y: GROUND_Y, vx:0, vy:0, dir:1,
-  w:48, h:64,
-  state:'idle', frame:0, frameTick:0, onGround:true,
-  hp:100, stateSince:0, stateLock:false,
-  attackStage:0, nextAttackQueued:false
-};
+const hero = { x: (mode === 'global' ? spawnGlobal.x : spawnRoom.x), y: GROUND_Y, vx:0, vy:0, dir:1, w:48, h:64, state:'idle', frame:0, frameTick:0, onGround:true, hp:100, stateSince:0, stateLock:false, attackStage:0, nextAttackQueued:false };
 
-/* animations / sprites (same names) */
-const ANIMS = {
-  'idle':4,'idle-2':4,'run':6,'jump':4,'fall':2,'attack1':5,'attack2':6,'attack3':6,
-  'hurt':3,'die':7,'crouch':4,'slide':2,'smrslt':4,'crnr-clmb':5,'crnr-jmp':3,'crnr-grab':2
-};
+/* anims */
+const ANIMS = { 'idle':4,'idle-2':4,'run':6,'jump':4,'fall':2,'attack1':5,'attack2':6,'attack3':6,'hurt':3,'die':7,'crouch':4,'slide':2,'smrslt':4,'crnr-clmb':5,'crnr-jmp':3,'crnr-grab':2 };
 const SPRITES = {};
 let totalToLoad = 0, loadedCount = 0;
 for(const k in ANIMS){ SPRITES[k]=[]; for(let i=0;i<ANIMS[k];i++){ totalToLoad++; const img=new Image(); const fname=`asset/hero/adventurer-${k}-${String(i).padStart(2,'0')}.png`; img.onload=()=>loadedCount++; img.onerror=()=>{loadedCount++;}; img.src=fname; SPRITES[k].push(img); } }
 const SPRITE_MIN_THRESHOLD = Math.min(8, totalToLoad);
-let spriteReady = false;
-const spriteWaitStart = performance.now();
-const SPRITE_WAIT_TIMEOUT = 2000;
+let spriteReady = false; const spriteWaitStart = performance.now(); const SPRITE_WAIT_TIMEOUT = 2000;
 (function waitSprites(){ if(loadedCount >= SPRITE_MIN_THRESHOLD || performance.now()-spriteWaitStart > SPRITE_WAIT_TIMEOUT) spriteReady=true; else setTimeout(waitSprites,80); })();
 
 /* input */
 const INPUT = { left:false, right:false, jump:false, attack:false, crouch:false, up:false };
-let activePointerId = null;
-let lastAttackAt=0, lastJumpAt=0;
-const attackCooldownMs = 120, jumpCooldownMs = 120;
-let queuedAction = null;
-function inputAllowed(){ return spriteReady && rotateOverlay.classList.contains('hidden'); }
-
-function bindBtn(id, onDown, onUp){
-  const el = byId(id);
-  if(!el) return;
-  el.addEventListener('pointerdown',(ev)=>{
-    if(!inputAllowed()) return;
-    if(activePointerId !== null && activePointerId !== ev.pointerId) return;
-    activePointerId = ev.pointerId; el.setPointerCapture && el.setPointerCapture(ev.pointerId); el.classList.add('pressed'); try{ onDown(ev);}catch(e){}
-  });
-  el.addEventListener('pointerup',(ev)=>{ if(activePointerId !== ev.pointerId) return; el.releasePointerCapture && el.releasePointerCapture(ev.pointerId); activePointerId=null; el.classList.remove('pressed'); try{ onUp(ev);}catch(e){} });
-  el.addEventListener('pointercancel',(ev)=>{ if(activePointerId===ev.pointerId){ activePointerId=null; el.classList.remove('pressed'); onUp(ev);} });
-  el.addEventListener('pointerleave',(ev)=>{ if(activePointerId===ev.pointerId){ el.classList.remove('pressed'); } });
-}
+let activePointerId = null; let lastAttackAt=0, lastJumpAt=0; const attackCooldownMs=120, jumpCooldownMs=120; let queuedAction=null; function inputAllowed(){ return spriteReady && document.getElementById('rotateOverlay').classList.contains('hidden'); }
+function bindBtn(id, onDown, onUp){ const el = byId(id); if(!el) return; el.addEventListener('pointerdown',(ev)=>{ if(!inputAllowed()) return; if(activePointerId !== null && activePointerId !== ev.pointerId) return; activePointerId = ev.pointerId; el.setPointerCapture && el.setPointerCapture(ev.pointerId); el.classList.add('pressed'); try{ onDown(ev);}catch(e){} }); el.addEventListener('pointerup',(ev)=>{ if(activePointerId !== ev.pointerId) return; el.releasePointerCapture && el.releasePointerCapture(ev.pointerId); activePointerId=null; el.classList.remove('pressed'); try{ onUp(ev);}catch(e){} }); el.addEventListener('pointercancel',(ev)=>{ if(activePointerId===ev.pointerId){ activePointerId=null; el.classList.remove('pressed'); onUp(ev);} }); el.addEventListener('pointerleave',(ev)=>{ if(activePointerId===ev.pointerId){ el.classList.remove('pressed'); } }); }
 bindBtn('btnLeft', ()=>INPUT.left=true, ()=>INPUT.left=false);
 bindBtn('btnRight', ()=>INPUT.right=true, ()=>INPUT.right=false);
 bindBtn('btnJump', ()=>{ if(!inputAllowed()) return; const now=performance.now(); if(now - lastJumpAt < jumpCooldownMs) return; lastJumpAt = now; INPUT.jump = true; }, ()=>{ INPUT.jump = false; });
@@ -239,359 +201,82 @@ bindBtn('btnCrouch', ()=>INPUT.crouch=true, ()=>INPUT.crouch=false);
 window.addEventListener('keydown',(e)=>{ if(!inputAllowed()) return; if(e.repeat) return; if(e.key==='ArrowLeft'||e.key==='a') INPUT.left=true; if(e.key==='ArrowRight'||e.key==='d') INPUT.right=true; if(e.key==='ArrowUp'||e.key==='w') INPUT.up=true; if((e.key===' '||e.key==='ArrowUp'||e.key==='w')&&(performance.now()-lastJumpAt>jumpCooldownMs)){ lastJumpAt=performance.now(); INPUT.jump=true;} if(e.key==='j'||e.key==='k'){ if(performance.now()-lastAttackAt>attackCooldownMs){ lastAttackAt=performance.now(); INPUT.attack=true; queuedAction='attack'; } } if(e.key==='s'||e.key==='ArrowDown') INPUT.crouch=true; });
 window.addEventListener('keyup',(e)=>{ if(e.key==='ArrowLeft'||e.key==='a') INPUT.left=false; if(e.key==='ArrowRight'||e.key==='d') INPUT.right=false; if(e.key==='ArrowUp'||e.key==='w') INPUT.up=false; if(e.key==='s'||e.key==='ArrowDown') INPUT.crouch=false; if(e.key===' '||e.key==='ArrowUp'||e.key==='w') INPUT.jump=false; });
 
-/* physics protections */
-const VX_MAX=12, VY_MAX=40, VY_MIN=-28;
-const MIN_STATE_DUR = { 'attack1': 140, 'attack2': 140, 'attack3':140, 'hurt': 350, 'die': 99999, 'jump': 120, 'fall': 100, 'slide': 220, 'crnr-grab': 120 };
-const LOOP_STATES = new Set(['idle','run','fall','crouch','idle-2']);
-function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-function safeNumber(v,def=0){ return (isFinite(v) && !isNaN(v)) ? v : def; }
-
-/* collisions */
+/* physics */
+const VX_MAX=12, VY_MAX=40, VY_MIN=-28; const MIN_STATE_DUR={ 'attack1':140,'attack2':140,'attack3':140,'hurt':350,'die':99999,'jump':120,'fall':100,'slide':220,'crnr-grab':120 };
+const LOOP_STATES=new Set(['idle','run','fall','crouch','idle-2']); function clamp(v,a,b){return Math.max(a,Math.min(b,v));} function safeNumber(v,def=0){return (isFinite(v) && !isNaN(v))?v:def;}
 function rectOfHero(h=hero){ return { x: h.x - h.w/2, y: h.y - h.h, w: h.w, h: h.h }; }
 function rectOverlap(a,b){ return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h); }
-function resolveAABBCollision(hRect, obs){
-  const overlapX = Math.min(hRect.x + hRect.w - obs.x, obs.x + obs.w - hRect.x);
-  const overlapY = Math.min(hRect.y + hRect.h - obs.y, obs.y + obs.h - hRect.y);
-  if(overlapX <= 0 || overlapY <= 0) return false;
-  if(overlapX < overlapY){
-    if(hRect.x + hRect.w/2 < obs.x + obs.w/2){ hero.x -= overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1); } else { hero.x += overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1); }
-    return true;
-  } else {
-    if(hRect.y + hRect.h/2 < obs.y + obs.h/2){ hero.y -= overlapY + 0.5; hero.vy = 0; hero.onGround = true; } else { hero.y += overlapY + 0.5; hero.vy = Math.max(hero.vy, 0); }
-    return true;
-  }
-}
+function resolveAABBCollision(hRect, obs){ const overlapX = Math.min(hRect.x + hRect.w - obs.x, obs.x + obs.w - hRect.x); const overlapY = Math.min(hRect.y + hRect.h - obs.y, obs.y + obs.h - hRect.y); if(overlapX<=0||overlapY<=0) return false; if(overlapX<overlapY){ if(hRect.x + hRect.w/2 < obs.x + obs.w/2){ hero.x -= overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1); } else { hero.x += overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1); } return true; } else { if(hRect.y + hRect.h/2 < obs.y + obs.h/2){ hero.y -= overlapY + 0.5; hero.vy = 0; hero.onGround = true; } else { hero.y += overlapY + 0.5; hero.vy = Math.max(hero.vy, 0); } return true; } }
 
 /* state machine */
 function canChangeState(next, force=false){ if(hero.state===next) return false; if(hero.state==='die' && next!=='die') return false; if(hero.stateLock && !force) return false; return true; }
-function setState(next, opts={force:false, lock:false}){ const now = performance.now(); if(!opts.force && MIN_STATE_DUR[hero.state] && now - hero.stateSince < MIN_STATE_DUR[hero.state]) return false; if(!canChangeState(next, !!opts.force)) return false; hero.state = next; hero.frame = 0; hero.frameTick = 0; hero.stateSince = now; hero.stateLock = !!opts.lock; return true; }
+function setState(next, opts={force:false, lock:false}){ const now=performance.now(); if(!opts.force && MIN_STATE_DUR[hero.state] && now - hero.stateSince < MIN_STATE_DUR[hero.state]) return false; if(!canChangeState(next, !!opts.force)) return false; hero.state = next; hero.frame = 0; hero.frameTick = 0; hero.stateSince = now; hero.stateLock = !!opts.lock; return true; }
 function forceState(next){ return setState(next, {force:true, lock:false}); }
-function startAttack(stage){
-  stage = Math.max(1, Math.min(3, stage));
-  hero.attackStage = stage; hero.nextAttackQueued = false;
-  setState('attack' + stage, {force:true, lock:true});
-  const hitDelayPerStage = {1:110,2:140,3:160};
-  const damagePerStage = {1:10,2:16,3:22};
-  setTimeout(()=> attemptAttackHit(stage, damagePerStage[stage] || 10), hitDelayPerStage[stage] || 120);
-}
-
-function findNearbyEdge(){ const margin = 18; const topTolerance=10; const heroFeetX = hero.x; for(const obs of obstacles){ const topY = obs.y; if(Math.abs(hero.y - topY) <= topTolerance){ if(Math.abs(heroFeetX - obs.x) <= margin) return {obs, side:'left'}; if(Math.abs(heroFeetX - (obs.x + obs.w)) <= margin) return {obs, side:'right'}; } } return null; }
-
+function startAttack(stage){ stage = Math.max(1, Math.min(3, stage)); hero.attackStage = stage; hero.nextAttackQueued = false; setState('attack' + stage, {force:true, lock:true}); const hitDelayPerStage = {1:110,2:140,3:160}; const damagePerStage = {1:10,2:16,3:22}; setTimeout(()=> attemptAttackHit(stage, damagePerStage[stage] || 10), hitDelayPerStage[stage] || 120); }
+function findNearbyEdge(){ const margin=18; const topTolerance=10; const heroFeetX = hero.x; for(const obs of obstacles){ const topY = obs.y; if(Math.abs(hero.y - topY) <= topTolerance){ if(Math.abs(heroFeetX - obs.x) <= margin) return {obs, side:'left'}; if(Math.abs(heroFeetX - (obs.x + obs.w)) <= margin) return {obs, side:'right'}; } } return null; }
 let lastAttackJumpTogether = 0;
 
-/* ATTACK HIT detection + transaction */
-function attemptAttackHit(stage, damage){
-  try {
-    if(!otherPlayers) return;
-    const HORIZONTAL_RANGE = 80 + (stage * 12);
-    const VERTICAL_RANGE = 40;
-    let candidate = null; let bestDist = Infinity;
-    for(const tname in otherPlayers){
-      const p = otherPlayers[tname];
-      if(!p || p.state === 'die') continue;
-      const dx = (p.x || 0) - hero.x; const dy = (p.y || GROUND_Y) - hero.y;
-      const absdx = Math.abs(dx), absdy = Math.abs(dy);
-      if(absdx <= HORIZONTAL_RANGE && absdy <= VERTICAL_RANGE){
-        if((dx > 0 && hero.dir === 1) || (dx < 0 && hero.dir === -1)){
-          if(absdx < bestDist){ candidate = {name:tname, data:p, dist:absdx}; bestDist = absdx; }
-        }
-      }
-    }
-    if(!candidate) return;
-    const targetName = candidate.name;
-    const targetHpRef = db.ref(BASE_PLAYERS_PATH + '/' + targetName + '/hp');
+/* attack hit + transaction */
+function attemptAttackHit(stage, damage){ try{ if(!otherPlayers) return; const HORIZONTAL_RANGE = 80 + (stage*12); const VERTICAL_RANGE = 40; let candidate=null; let bestDist=Infinity; for(const tname in otherPlayers){ const p=otherPlayers[tname]; if(!p||p.state==='die') continue; const dx=(p.x||0)-hero.x; const dy=(p.y||GROUND_Y)-hero.y; const absdx=Math.abs(dx), absdy=Math.abs(dy); if(absdx<=HORIZONTAL_RANGE && absdy<=VERTICAL_RANGE){ if((dx>0 && hero.dir===1) || (dx<0 && hero.dir===-1)){ if(absdx<bestDist){ candidate={name:tname,data:p,dist:absdx}; bestDist=absdx; } } } } if(!candidate) return; const targetName = candidate.name; const targetHpRef = db.ref(BASE_PLAYERS_PATH + '/' + targetName + '/hp'); targetHpRef.transaction(currentHp => { if(currentHp === null || typeof currentHp === 'undefined') return Math.max(0, 100 - damage); if(currentHp <= 0) return currentHp; return Math.max(0, currentHp - damage); }, (err, committed, snapshot) => { if(err){ console.warn('hp transaction err', err); return; } if(!committed) return; const newHp = snapshot.val(); showToast(`Kena ${targetName} -${damage}HP`); if(newHp !== null && newHp <= 0){ db.ref(BASE_PLAYERS_PATH + '/' + targetName + '/state').set('die').catch(()=>{}); const userCoinRef = db.ref('users/' + username + '/coin'); userCoinRef.transaction(c => (c||0) + 10, (e,comm,snapc)=> { if(comm && snapc){ myCoin = snapc.val() || myCoin; showToast('+10 coin'); myPlayerRef.child('coin').set(myCoin).catch(()=>{}); db.ref('users/' + username + '/kills').transaction(k => (k||0)+1); } }); setTimeout(()=>{ const targetRef = db.ref(BASE_PLAYERS_PATH + '/' + targetName); targetRef.get().then(snap=>{ const v = snap.val(); if(v && v.state === 'die'){ const spawn = (mode==='global') ? spawnGlobal : spawnRoom; const newPayload = { username: targetName, x: spawn.x + Math.floor(Math.random()*40 - 20), y: spawn.y, vx:0, vy:0, dir:1, state:'idle', frame:0, hp:100, coin:(v.coin||0), lastSeen: firebase.database.ServerValue.TIMESTAMP }; targetRef.set(newPayload).catch(()=>{}); } }).catch(()=>{}); }, 3000); } }); }catch(e){ console.error('attemptAttackHit err', e); } }
 
-    targetHpRef.transaction(currentHp => {
-      if(currentHp === null || typeof currentHp === 'undefined') return Math.max(0, 100 - damage);
-      if(currentHp <= 0) return currentHp;
-      return Math.max(0, currentHp - damage);
-    }, (err, committed, snapshot) => {
-      if(err){ console.warn('hp transaction err', err); return; }
-      if(!committed) return;
-      const newHp = snapshot.val();
-      showToast(`Kena ${targetName} -${damage}HP`);
-      if(newHp !== null && newHp <= 0){
-        // set state die
-        db.ref(BASE_PLAYERS_PATH + '/' + targetName + '/state').set('die').catch(()=>{});
-        // reward attacker
-        const userCoinRef = db.ref('users/' + username + '/coin');
-        userCoinRef.transaction(c => (c||0) + 10, (e,comm,snapc)=> {
-          if(comm && snapc){ myCoin = snapc.val() || myCoin; showToast('+10 coin'); myPlayerRef.child('coin').set(myCoin).catch(()=>{}); db.ref('users/' + username + '/kills').transaction(k => (k||0)+1); }
-        });
-
-        // schedule respawn of target after 3000ms
-        setTimeout(()=> {
-          const targetRef = db.ref(BASE_PLAYERS_PATH + '/' + targetName);
-          targetRef.get().then(snap => {
-            const v = snap.val();
-            // only respawn if still dead (avoid respawning if they reconnected)
-            if(v && v.state === 'die'){
-              const spawn = (mode === 'global') ? spawnGlobal : spawnRoom;
-              const newPayload = {
-                username: targetName,
-                x: spawn.x + Math.floor(Math.random()*40 - 20),
-                y: spawn.y,
-                vx: 0, vy:0, dir: 1, state: 'idle', frame:0, hp: 100, coin: (v.coin||0), lastSeen: firebase.database.ServerValue.TIMESTAMP
-              };
-              targetRef.set(newPayload).catch(()=>{});
-            }
-          }).catch(()=>{});
-        }, 3000);
-      }
-    });
-  } catch(e){
-    console.error('attemptAttackHit err', e);
-  }
-}
-
-/* main update loop */
+/* update */
 let last = performance.now();
-function update(dt){
-  try {
-    hero.x = safeNumber(hero.x, (mode==='global'?spawnGlobal.x:spawnRoom.x)); hero.y = safeNumber(hero.y, GROUND_Y);
-    hero.vx = safeNumber(hero.vx, 0); hero.vy = safeNumber(hero.vy, 0);
-
-    if(!spriteReady){
-      hero.vx *= 0.8; hero.vy += 0.6;
-    } else {
-      if(INPUT.attack && INPUT.jump){
-        const now = performance.now();
-        if(now - lastAttackJumpTogether > 300) lastAttackJumpTogether = now;
-        if(hero.onGround && canChangeState('smrslt')){ setState('smrslt',{force:true,lock:true}); hero.vy = -10; hero.onGround = false; }
-      }
-
-      if(!hero.onGround){
-        if(INPUT.attack && canChangeState('attack1') && !hero.stateLock){ startAttack(1); }
-        else { if(hero.vy > 1 && hero.state !== 'fall') setState('fall', {force:true, lock:false}); }
-      } else {
-        if(INPUT.attack && !hero.stateLock && (performance.now() - hero.stateSince > 40)) { startAttack(1); }
-        else if(INPUT.attack && hero.state && hero.state.startsWith('attack') && hero.stateLock){ if(hero.attackStage>0 && hero.attackStage<3) hero.nextAttackQueued=true; }
-        if(INPUT.crouch && (INPUT.left || INPUT.right) && hero.onGround && !hero.stateLock){
-          if(setState('slide',{force:true,lock:true})) hero.vx = (INPUT.right?6:-6);
-        } else if(INPUT.crouch && !INPUT.left && !INPUT.right && hero.onGround && !hero.stateLock){ setState('crouch',{force:true,lock:false}); hero.vx *= 0.6; }
-        const edge = findNearbyEdge();
-        if(edge && INPUT.up && hero.onGround && !hero.stateLock){ setState('crnr-grab',{force:true,lock:true}); }
-        if(INPUT.jump && hero.onGround && !hero.stateLock){ hero.vy = -13.2; hero.onGround = false; setState('jump',{force:true,lock:false}); INPUT.jump = false; }
-        if(!hero.stateLock){
-          if(INPUT.left || INPUT.right){ hero.dir = INPUT.right ? 1 : -1; setState('run',{force:false,lock:false}); hero.vx += (INPUT.right?1:-1) * 0.9; } else { setState('idle',{force:false,lock:false}); hero.vx *= 0.78; }
-        }
-      }
+function update(dt){ try{ hero.x = safeNumber(hero.x, (mode==='global'?spawnGlobal.x:spawnRoom.x)); hero.y = safeNumber(hero.y, GROUND_Y); hero.vx = safeNumber(hero.vx, 0); hero.vy = safeNumber(hero.vy, 0);
+  if(!spriteReady){ hero.vx *= 0.8; hero.vy += 0.6; } else {
+    if(INPUT.attack && INPUT.jump){ const now=performance.now(); if(now - lastAttackJumpTogether > 300) lastAttackJumpTogether = now; if(hero.onGround && canChangeState('smrslt')){ setState('smrslt',{force:true,lock:true}); hero.vy = -10; hero.onGround = false; } }
+    if(!hero.onGround){ if(INPUT.attack && canChangeState('attack1') && !hero.stateLock){ startAttack(1); } else { if(hero.vy > 1 && hero.state !== 'fall') setState('fall', {force:true, lock:false}); } } else {
+      if(INPUT.attack && !hero.stateLock && (performance.now() - hero.stateSince > 40)) { startAttack(1); } else if(INPUT.attack && hero.state && hero.state.startsWith('attack') && hero.stateLock){ if(hero.attackStage>0 && hero.attackStage<3) hero.nextAttackQueued=true; }
+      if(INPUT.crouch && (INPUT.left || INPUT.right) && hero.onGround && !hero.stateLock){ if(setState('slide',{force:true,lock:true})) hero.vx = (INPUT.right?6:-6); } else if(INPUT.crouch && !INPUT.left && !INPUT.right && hero.onGround && !hero.stateLock){ setState('crouch',{force:true,lock:false}); hero.vx *= 0.6; }
+      const edge = findNearbyEdge(); if(edge && INPUT.up && hero.onGround && !hero.stateLock){ setState('crnr-grab',{force:true,lock:true}); }
+      if(INPUT.jump && hero.onGround && !hero.stateLock){ hero.vy = -13.2; hero.onGround = false; setState('jump',{force:true,lock:false}); INPUT.jump = false; }
+      if(!hero.stateLock){ if(INPUT.left || INPUT.right){ hero.dir = INPUT.right ? 1 : -1; setState('run',{force:false,lock:false}); hero.vx += (INPUT.right?1:-1) * 0.9; } else { setState('idle',{force:false,lock:false}); hero.vx *= 0.78; } }
     }
-
-    hero.vy += 0.66;
-    hero.vx = clamp(hero.vx, -VX_MAX, VX_MAX); hero.vy = clamp(hero.vy, VY_MIN, VY_MAX);
-    if(hero.onGround && !INPUT.left && !INPUT.right && !hero.stateLock) hero.vx *= 0.7;
-    hero.x += hero.vx; hero.y += hero.vy;
-
-    const wasOnGround = hero.onGround;
-    if(hero.y >= GROUND_Y){
-      if(!wasOnGround && Math.abs(hero.vy) > 18){
-        hero.hp = clamp(hero.hp - 8, 0, 100); setState('hurt',{force:true,lock:true});
-      }
-      hero.y = GROUND_Y; hero.vy = 0; hero.onGround = true;
-    } else hero.onGround = false;
-
-    const hRect = rectOfHero();
-    for(const obs of obstacles) if(rectOverlap(hRect, obs)) resolveAABBCollision(hRect, obs);
-
-    if(!wasOnGround && hero.onGround){
-      hero.stateLock = hero.state === 'die' || hero.state === 'hurt';
-      if(hero.state==='smrslt' || hero.state==='jump' || hero.state==='fall'){ if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); }
-    }
-
-    if(hero.state === 'crnr-grab' && hero.stateLock){ if(INPUT.up) setState('crnr-clmb',{force:true,lock:true}); }
-    if(hero.state === 'crnr-clmb'){ const edge = findNearbyEdge(); if(edge){ hero.y = edge.obs.y; if(edge.side==='left') hero.x = edge.obs.x + 20; else hero.x = edge.obs.x + edge.obs.w - 20; } hero.stateLock=false; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); }
-
-    hero.x = clamp(hero.x, 32, Math.max(600, W - 32));
-
-    hero.frameTick += Math.max(1, Math.floor(dt/16));
-    const animMeta = ANIMS[hero.state] || ANIMS['idle'];
-    const ticksPerFrame = (hero.state === 'run' ? 4 : (hero.state.startsWith('attack') ? 6 : 8));
-    if(hero.frameTick >= ticksPerFrame){ hero.frameTick = 0; hero.frame++; if(hero.frame >= animMeta) handleAnimationComplete(hero.state); }
-
-    if(queuedAction && queuedAction === 'attack' && !INPUT.attack) queuedAction = null;
-    hero.x = safeNumber(hero.x, spawnGlobal.x); hero.y = safeNumber(hero.y, GROUND_Y);
-
-    // If died locally (hp <= 0) and state not set, set DB state -> respawn handled elsewhere
-    if(hero.hp <= 0 && hero.state !== 'die'){
-      hero.state = 'die'; hero.stateLock = true;
-      // write immediate die to DB so others see it
-      myPlayerRef.update({ state:'die', hp:0 }).catch(()=>{});
-      // schedule local respawn (to keep UI responsive)
-      scheduleRespawnFor(username);
-    }
-
-  } catch(err){
-    console.error('update error', err);
-    hero.vx = 0; hero.vy = 0; hero.state='idle'; hero.frame=0; hero.stateLock=false;
   }
-}
+  hero.vy += 0.66; hero.vx = clamp(hero.vx, -VX_MAX, VX_MAX); hero.vy = clamp(hero.vy, VY_MIN, VY_MAX); if(hero.onGround && !INPUT.left && !INPUT.right && !hero.stateLock) hero.vx *= 0.7; hero.x += hero.vx; hero.y += hero.vy;
+  const wasOnGround = hero.onGround; if(hero.y >= GROUND_Y){ if(!wasOnGround && Math.abs(hero.vy) > 18){ hero.hp = clamp(hero.hp - 8, 0, 100); setState('hurt',{force:true,lock:true}); } hero.y = GROUND_Y; hero.vy = 0; hero.onGround = true; } else hero.onGround = false;
+  const hRect = rectOfHero(); for(const obs of obstacles) if(rectOverlap(hRect, obs)) resolveAABBCollision(hRect, obs);
+  if(!wasOnGround && hero.onGround){ hero.stateLock = hero.state === 'die' || hero.state === 'hurt'; if(hero.state==='smrslt' || hero.state==='jump' || hero.state==='fall'){ if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); } }
+  if(hero.state === 'crnr-grab' && hero.stateLock){ if(INPUT.up) setState('crnr-clmb',{force:true,lock:true}); }
+  if(hero.state === 'crnr-clmb'){ const edge = findNearbyEdge(); if(edge){ hero.y = edge.obs.y; if(edge.side==='left') hero.x = edge.obs.x + 20; else hero.x = edge.obs.x + edge.obs.w - 20; } hero.stateLock=false; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); }
+  hero.x = clamp(hero.x, 32, Math.max(600, window.innerWidth - 32)); hero.frameTick += Math.max(1, Math.floor(dt/16)); const animMeta = ANIMS[hero.state] || ANIMS['idle']; const ticksPerFrame = (hero.state === 'run' ? 4 : (hero.state.startsWith('attack') ? 6 : 8)); if(hero.frameTick >= ticksPerFrame){ hero.frameTick = 0; hero.frame++; if(hero.frame >= animMeta) handleAnimationComplete(hero.state); }
+  if(queuedAction && queuedAction === 'attack' && !INPUT.attack) queuedAction = null; hero.x = safeNumber(hero.x, spawnGlobal.x); hero.y = safeNumber(hero.y, GROUND_Y);
+  if(hero.hp <= 0 && hero.state !== 'die'){ hero.state = 'die'; hero.stateLock = true; myPlayerRef.update({ state:'die', hp:0 }).catch(()=>{}); scheduleRespawnFor(username); }
+} catch(err){ console.error('update error', err); hero.vx = 0; hero.vy = 0; hero.state='idle'; hero.frame=0; hero.stateLock=false; } }
 
-function handleAnimationComplete(stateEnded){
-  if(LOOP_STATES.has(stateEnded)){ hero.frame = hero.frame % (ANIMS[stateEnded] || 1); return; }
-  if(stateEnded.startsWith('attack')){
-    if(hero.nextAttackQueued && hero.attackStage < 3){ startAttack(hero.attackStage+1); return; } else { hero.attackStage=0; hero.nextAttackQueued=false; hero.stateLock=false; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; }
-  }
-  if(stateEnded === 'slide'){ hero.stateLock=false; hero.vx=0; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; }
-  if(stateEnded === 'crouch'){ if(INPUT.crouch){ hero.frame=0; return; } else { hero.stateLock=false; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; } }
-  if(stateEnded === 'jump' || stateEnded === 'smrslt' || stateEnded === 'fall'){ hero.stateLock=false; if(hero.onGround){ if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); } else forceState('fall'); return; }
-  if(stateEnded === 'crnr-grab'){ hero.frame=0; return; }
-  if(stateEnded === 'crnr-clmb'){ const edge = findNearbyEdge(); if(edge){ hero.y = edge.obs.y; if(edge.side==='left') hero.x = edge.obs.x + 20; else hero.x = edge.obs.x + edge.obs.w - 20; } hero.stateLock=false; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; }
-  if(stateEnded === 'hurt'){ hero.stateLock=false; if(hero.hp <= 0) { setState('die',{force:true,lock:true}); scheduleRespawnFor(username); return; } if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; }
-  if(stateEnded === 'die'){ hero.stateLock=true; return; }
-  if(hero.onGround){ if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); } else { forceState('fall'); }
-}
+function handleAnimationComplete(stateEnded){ if(LOOP_STATES.has(stateEnded)){ hero.frame = hero.frame % (ANIMS[stateEnded] || 1); return; } if(stateEnded.startsWith('attack')){ if(hero.nextAttackQueued && hero.attackStage < 3){ startAttack(hero.attackStage+1); return; } else { hero.attackStage=0; hero.nextAttackQueued=false; hero.stateLock=false; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; } } if(stateEnded === 'slide'){ hero.stateLock=false; hero.vx=0; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; } if(stateEnded === 'crouch'){ if(INPUT.crouch){ hero.frame=0; return; } else { hero.stateLock=false; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; } } if(stateEnded === 'jump' || stateEnded === 'smrslt' || stateEnded === 'fall'){ hero.stateLock=false; if(hero.onGround){ if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); } else forceState('fall'); return; } if(stateEnded === 'crnr-grab'){ hero.frame=0; return; } if(stateEnded === 'crnr-clmb'){ const edge = findNearbyEdge(); if(edge){ hero.y = edge.obs.y; if(edge.side==='left') hero.x = edge.obs.x + 20; else hero.x = edge.obs.x + edge.obs.w - 20; } hero.stateLock=false; if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; } if(stateEnded === 'hurt'){ hero.stateLock=false; if(hero.hp <= 0) { setState('die',{force:true,lock:true}); scheduleRespawnFor(username); return; } if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); return; } if(stateEnded === 'die'){ hero.stateLock=true; return; } if(hero.onGround){ if(INPUT.left||INPUT.right) forceState('run'); else forceState('idle'); } else { forceState('fall'); } }
 
-/* draw players + local hero */
-function draw(){
-  try {
-    ctx.clearRect(0,0,W,H);
-    const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#242628'); g.addColorStop(1,'#101214');
-    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+/* draw */
+function draw(){ try{ ctx.clearRect(0,0,window.innerWidth,window.innerHeight); const g = ctx.createLinearGradient(0,0,0,window.innerHeight); g.addColorStop(0,'#242628'); g.addColorStop(1,'#101214'); ctx.fillStyle = g; ctx.fillRect(0,0,window.innerWidth,window.innerHeight);
+  for(const obs of obstacles){ ctx.fillStyle = '#2b2c2f'; ctx.fillRect(obs.x, obs.y, obs.w, obs.h); ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.strokeRect(obs.x, obs.y, obs.w, obs.h); }
+  for(const uname in otherPlayers){ const p = otherPlayers[uname]; const nickX = p.x || 100; const nickY = (p.y || GROUND_Y) - (p.h || 64) - 18; const text = uname + (p.coin !== undefined ? ' ✦' + p.coin : ''); ctx.font = '14px system-ui'; const tw = ctx.measureText(text).width; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(nickX - tw/2 - 8, nickY - 14, tw + 16, 20); ctx.fillStyle = '#fff'; ctx.fillText(text, nickX - tw/2, nickY); ctx.save(); ctx.translate(nickX, p.y || GROUND_Y); ctx.scale((p.dir === -1) ? -1 : 1, 1); const animSet = SPRITES[p.state] && SPRITES[p.state].length ? SPRITES[p.state] : (SPRITES['idle'] || []); const frameIndex = (p.frame || 0) % (animSet.length || 1); const img = animSet[frameIndex] || null; if(img && img.complete && img.naturalWidth){ const scale = Math.max(1.0, Math.min(2.0, (window.innerHeight/720) * 1.6)); const w = img.width * scale, h = img.height * scale; try { ctx.drawImage(img, -w/2, -h, w, h); } catch(e){ ctx.fillStyle='#8a8d90'; ctx.fillRect(-24, -64, 48, 64); } } else { ctx.fillStyle = '#8a8d90'; ctx.fillRect(-24, -64, 48, 64); } ctx.restore(); }
+  const animSet = SPRITES[hero.state] && SPRITES[hero.state].length ? SPRITES[hero.state] : (SPRITES['idle'] || []); const frameIndex = hero.frame % (animSet.length || 1); const img = animSet[frameIndex] || null; if(img && img.complete && img.naturalWidth){ const scale = Math.max(1.2, Math.min(2.0, (window.innerHeight/720) * 1.8)); const w = img.width * scale, h = img.height * scale; ctx.save(); ctx.translate(hero.x, hero.y); ctx.scale(hero.dir, 1); try { ctx.drawImage(img, -w/2, -h, w, h); } catch(e){ ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h); } ctx.restore(); } else { ctx.save(); ctx.translate(hero.x, hero.y); ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h); ctx.restore(); }
+  ctx.font = '14px system-ui'; const myText = username + ' ✦' + (myCoin || 0); const mtw = ctx.measureText(myText).width; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(hero.x - mtw/2 - 8, hero.y - hero.h - 20, mtw + 16, 20); ctx.fillStyle = '#fff'; ctx.fillText(myText, hero.x - mtw/2, hero.y - hero.h - 6);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = '14px system-ui'; ctx.fillText(`State: ${hero.state} ${hero.stateLock ? '(locked)':''}`, 12, 60); ctx.fillText(`Players:${Object.keys(otherPlayers).length}`, 12, 80); ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(0,0,window.innerWidth,48);
+ } catch(err){ console.error('draw error', err); } }
 
-    for(const obs of obstacles){
-      ctx.fillStyle = '#2b2c2f';
-      ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
-      ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
-    }
-
-    // other players
-    for(const uname in otherPlayers){
-      const p = otherPlayers[uname];
-      const nickX = p.x || 100;
-      const nickY = (p.y || GROUND_Y) - (p.h || 64) - 18;
-      const text = uname + (p.coin !== undefined ? ' ✦' + p.coin : '');
-      ctx.font = '14px system-ui';
-      const tw = ctx.measureText(text).width;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(nickX - tw/2 - 8, nickY - 14, tw + 16, 20);
-      ctx.fillStyle = '#fff'; ctx.fillText(text, nickX - tw/2, nickY);
-
-      ctx.save(); ctx.translate(nickX, p.y || GROUND_Y); ctx.scale((p.dir === -1) ? -1 : 1, 1);
-      const animSet = SPRITES[p.state] && SPRITES[p.state].length ? SPRITES[p.state] : (SPRITES['idle'] || []);
-      const frameIndex = (p.frame || 0) % (animSet.length || 1);
-      const img = animSet[frameIndex] || null;
-      if(img && img.complete && img.naturalWidth){
-        const scale = Math.max(1.0, Math.min(2.0, (H/720) * 1.6));
-        const w = img.width * scale, h = img.height * scale;
-        try { ctx.drawImage(img, -w/2, -h, w, h); } catch(e){ ctx.fillStyle='#8a8d90'; ctx.fillRect(-24, -64, 48, 64); }
-      } else {
-        ctx.fillStyle = '#8a8d90'; ctx.fillRect(-24, -64, 48, 64);
-      }
-      ctx.restore();
-    }
-
-    // local hero
-    const animSet = SPRITES[hero.state] && SPRITES[hero.state].length ? SPRITES[hero.state] : (SPRITES['idle'] || []);
-    const frameIndex = hero.frame % (animSet.length || 1);
-    const img = animSet[frameIndex] || null;
-    if(img && img.complete && img.naturalWidth){
-      const scale = Math.max(1.2, Math.min(2.0, (H/720) * 1.8));
-      const w = img.width * scale, h = img.height * scale;
-      ctx.save(); ctx.translate(hero.x, hero.y); ctx.scale(hero.dir, 1);
-      try { ctx.drawImage(img, -w/2, -h, w, h); } catch(e){ ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h); }
-      ctx.restore();
-    } else {
-      ctx.save(); ctx.translate(hero.x, hero.y); ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h); ctx.restore();
-    }
-
-    // nickname above
-    ctx.font = '14px system-ui';
-    const myText = username + ' ✦' + (myCoin || 0);
-    const mtw = ctx.measureText(myText).width;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(hero.x - mtw/2 - 8, hero.y - hero.h - 20, mtw + 16, 20);
-    ctx.fillStyle = '#fff'; ctx.fillText(myText, hero.x - mtw/2, hero.y - hero.h - 6);
-
-    // debug
-    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = '14px system-ui';
-    ctx.fillText(`State: ${hero.state} ${hero.stateLock ? '(locked)':''}`, 12, 60);
-    ctx.fillText(`Players:${Object.keys(otherPlayers).length}`, 12, 80);
-    ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(0,0,W,48);
-
-  } catch(err){ console.error('draw error', err); }
-}
-
-/* game loop */
-let lastT = performance.now();
-function loop(now){
-  try {
-    const dt = now - lastT; lastT = now;
-    if(hero.state === 'die') { INPUT.left = INPUT.right = INPUT.jump = INPUT.attack = INPUT.crouch = false; }
-    update(dt); draw();
-  } catch(e){ console.error('main loop error', e); }
-  requestAnimationFrame(loop);
-}
+/* loop */
+let lastT = performance.now(); function loop(now){ try{ const dt = now - lastT; lastT = now; if(hero.state === 'die') { INPUT.left = INPUT.right = INPUT.jump = INPUT.attack = INPUT.crouch = false; } update(dt); draw(); }catch(e){ console.error('main loop error', e); } requestAnimationFrame(loop); }
 (function startWhenReady(){ if(spriteReady || performance.now()-spriteWaitStart > SPRITE_WAIT_TIMEOUT){ lastT = performance.now(); requestAnimationFrame(loop); showToast('Terhubung — game dimulai'); } else setTimeout(startWhenReady,80); })();
 
-/* HP bar update */
+/* hp UI */
 setInterval(()=>{ const hb = byId('hpFill'); if(hb) hb.style.width = hero.hp + '%'; }, 120);
 
-/* presence and writing my state */
-let lastSync = 0;
-let myCoin = 0;
-async function writeMyState(){
-  const now = Date.now();
-  if(now - lastSync < 90) return;
-  lastSync = now;
-  const payload = {
-    username,
-    x: Math.round(hero.x),
-    y: Math.round(hero.y),
-    vx: Math.round(hero.vx*100)/100,
-    vy: Math.round(hero.vy*100)/100,
-    dir: hero.dir,
-    state: hero.state,
-    frame: hero.frame,
-    hp: hero.hp,
-    coin: myCoin,
-    lastSeen: firebase.database.ServerValue.TIMESTAMP
-  };
-  try {
-    await myPlayerRef.update(payload);
-  } catch(e){ console.warn('writeMyState fail', e); }
-}
+/* write my state */
+let lastSync = 0; let myCoin = 0; async function writeMyState(){ const now = Date.now(); if(now - lastSync < 90) return; lastSync = now; const payload = { username, x: Math.round(hero.x), y: Math.round(hero.y), vx: Math.round(hero.vx*100)/100, vy: Math.round(hero.vy*100)/100, dir: hero.dir, state: hero.state, frame: hero.frame, hp: hero.hp, coin: myCoin, lastSeen: firebase.database.ServerValue.TIMESTAMP }; try{ await myPlayerRef.update(payload); }catch(e){ console.warn('writeMyState fail', e); } }
 setInterval(()=> writeMyState(), 100);
 
-/* read my coin */
+/* read coin */
 db.ref('users/' + username + '/coin').on('value', s => { if(s.exists()) myCoin = s.val(); });
 
-/* respawn helper */
-function scheduleRespawnFor(targetName){
-  // If targetName is me, respawn local hero; if other, handled by transaction callback schedule
-  if(targetName === username){
-    setTimeout(()=> {
-      // respawn: reset hero and write to DB
-      const spawn = (mode==='global') ? spawnGlobal : spawnRoom;
-      hero.x = spawn.x + Math.floor(Math.random()*40 - 20);
-      hero.y = spawn.y;
-      hero.vx = 0; hero.vy = 0;
-      hero.hp = 100;
-      hero.state = 'idle'; hero.stateLock = false; hero.frame = 0;
-      writeMyState();
-      showToast('Respawned');
-    }, 3000);
-  } else {
-    // nothing local to do; remote respawn scheduled earlier by attacker callback
-  }
-}
+/* respawn */
+function scheduleRespawnFor(targetName){ if(targetName === username){ setTimeout(()=>{ const spawn = (mode==='global')?spawnGlobal:spawnRoom; hero.x = spawn.x + Math.floor(Math.random()*40 - 20); hero.y = spawn.y; hero.vx = 0; hero.vy = 0; hero.hp = 100; hero.state = 'idle'; hero.stateLock = false; hero.frame = 0; writeMyState(); showToast('Respawned'); }, 3000); } }
 
-/* If DB removed our node (e.g. onDisconnect), recreate and write initial */
-async function ensureMyNode(){
-  // check users coin and ensure node present
-  const uRef = db.ref('users/' + username);
-  const uSnap = await uRef.get();
-  if(!uSnap.exists()){
-    await uRef.set({ password: '', coin: 0, createdAt: firebase.database.ServerValue.TIMESTAMP });
-  }
-  myCoin = (uSnap.exists() && uSnap.val().coin) ? uSnap.val().coin : (myCoin||0);
-  myPlayerRef = db.ref(BASE_PLAYERS_PATH + '/' + username);
-  myPlayerRef.onDisconnect().remove().catch(()=>{});
-  const spawn = (mode==='global') ? spawnGlobal : spawnRoom;
-  const pl = { username, x: Math.round(hero.x||spawn.x), y: Math.round(hero.y||spawn.y), vx:0, vy:0, dir:1, state:'idle', frame:0, hp:hero.hp||100, coin: myCoin, lastSeen: firebase.database.ServerValue.TIMESTAMP };
-  await myPlayerRef.set(pl);
-}
+/* ensure my node */
+async function ensureMyNode(){ const uRef = db.ref('users/' + username); const uSnap = await uRef.get(); if(!uSnap.exists()){ await uRef.set({ password:'', coin:0, createdAt: firebase.database.ServerValue.TIMESTAMP }); }
+ myCoin = (uSnap.exists() && uSnap.val().coin) ? uSnap.val().coin : (myCoin||0); myPlayerRef = db.ref(BASE_PLAYERS_PATH + '/' + username); myPlayerRef.onDisconnect().remove().catch(()=>{}); const spawn = (mode==='global')?spawnGlobal:spawnRoom; const pl = { username, x: Math.round(hero.x||spawn.x), y: Math.round(hero.y||spawn.y), vx:0, vy:0, dir:1, state:'idle', frame:0, hp:hero.hp||100, coin: myCoin, lastSeen: firebase.database.ServerValue.TIMESTAMP }; await myPlayerRef.set(pl); }
 ensureMyNode().catch(()=>{});
 
-/* cleanup on unload */
+/* cleanup */
 window.addEventListener('beforeunload', ()=>{ try{ myPlayerRef.remove(); }catch(e){} });
 
 /* desktop hint */
