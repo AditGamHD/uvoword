@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>UvoWorld — Login / Daftar</title>
+  <style>
+    body{font-family:Inter,system-ui,Arial;background:#0f1113;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    .card{background:#121314;padding:28px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.6);width:360px}
+    h1{margin:0 0 12px;font-size:20px}
+    label{display:block;margin-top:10px;color:#9aa0a6;font-size:13px}
+    input{width:100%;padding:10px;margin-top:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:#161718;color:#fff}
+    button{margin-top:14px;padding:10px 12px;width:100%;border-radius:8px;border:none;background:#0b84ff;color:#fff;font-weight:700;cursor:pointer}
+    .muted{color:#9aa0a6;margin-top:10px;font-size:13px;text-align:center}
+    .switch{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px;color:var(--muted);cursor:pointer;margin-top:8px}
+    .row{display:flex;gap:8px}
+    .small{font-size:13px;color:#9aa0a6}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>UvoWorld — Login / Daftar</h1>
+
+    <div id="formRegister">
+      <label>Username</label>
+      <input id="regUser" placeholder="username (tanpa spasi)" />
+      <label>Password</label>
+      <input id="regPass" type="password" placeholder="password" />
+      <button id="btnRegister">Daftar (Register)</button>
+      <div class="muted">Sudah punya akun? <button id="showLogin" class="switch">Masuk (Login)</button></div>
+    </div>
+
+    <div id="formLogin" style="display:none">
+      <label>Username</label>
+      <input id="loginUser" placeholder="username" />
+      <label>Password</label>
+      <input id="loginPass" type="password" placeholder="password" />
+      <button id="btnLogin">Masuk (Login)</button>
+      <div class="muted">Belum punya akun? <button id="showReg" class="switch">Daftar</button></div>
+    </div>
+
+    <div id="msg" class="small" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Firebase compat SDK (Realtime DB) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <script>
+    // ======= CONFIG: ganti jika perlu (databaseURL sudah dari user) =======
+    const firebaseConfig = {
+      databaseURL: "https://uvoword-default-rtdb.asia-southeast1.firebasedatabase.app"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // helper
+    const $ = id => document.getElementById(id);
+    function showMsg(t){ $('msg').textContent = t; setTimeout(()=>{ if($('msg') && $('msg').textContent === t) $('msg').textContent = ''; }, 3500); }
+
+    // UI switches
+    $('showLogin').addEventListener('click', ()=>{ $('formRegister').style.display='none'; $('formLogin').style.display='block'; });
+    $('showReg').addEventListener('click', ()=>{ $('formRegister').style.display='block'; $('formLogin').style.display='none'; });
+
+    // Register
+    $('btnRegister').addEventListener('click', async ()=>{
+      const username = $('regUser').value.trim();
+      const password = $('regPass').value;
+      if(!username || !password){ showMsg('Isi username & password'); return; }
+      if(/\s/.test(username)){ showMsg('Username tidak boleh mengandung spasi'); return; }
+      const userRef = db.ref('users/' + username);
+      const snap = await userRef.get();
+      if(snap.exists()){ showMsg('Username sudah dipakai'); return; }
+      // create user (coin default 0)
+      await userRef.set({ password: password, coin: 0 });
+      localStorage.setItem('uvo_user', username);
+      showMsg('Registrasi sukses — masuk otomatis');
+      setTimeout(()=> location.href = 'lobby.html', 700);
+    });
+
+    // Login
+    $('btnLogin').addEventListener('click', async ()=>{
+      const username = $('loginUser').value.trim();
+      const password = $('loginPass').value;
+      if(!username || !password){ showMsg('Isi username & password'); return; }
+      const userRef = db.ref('users/' + username);
+      const snap = await userRef.get();
+      if(!snap.exists()){ showMsg('Akun tidak ditemukan'); return; }
+      const data = snap.val();
+      if(data.password !== password){ showMsg('Password salah'); return; }
+      localStorage.setItem('uvo_user', username);
+      showMsg('Login sukses');
+      setTimeout(()=> location.href = 'lobby.html', 500);
+    });
+
+    // quick redirect if already logged in
+    (function(){
+      const u = localStorage.getItem('uvo_user');
+      if(u) { /* langsung ke lobby */ }
+    })();
+  </script>
+</body>
+</html>
