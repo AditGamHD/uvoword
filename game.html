@@ -38,6 +38,8 @@
   #toast{position:fixed;left:50%;top:16px;transform:translateX(-50%);background:var(--accent);padding:8px 14px;border-radius:8px;color:#fff;z-index:1200;opacity:0;transition:opacity .25s}
   #toast.show{opacity:1}
   @media (max-width:700px){:root{--btn-size:60px}.attack-circle{width:70px;height:70px}}
+  /* nickname above hero */
+  .nickname{position:absolute;font-size:14px;padding:2px 8px;border-radius:6px;background:rgba(0,0,0,0.6);pointer-events:none}
 </style>
 </head>
 <body>
@@ -96,23 +98,53 @@
 
   <div id="toast" role="status" aria-live="polite">Game siap</div>
 
+  <!-- Firebase compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
 <script>
-/* ================== UTILITIES & PROTECTIONS ==================
-Improvements:
-- Robust state machine supporting required transitions
-- Attack combo chaining (attack1 -> attack2 -> attack3)
-- Jump/land transitions: landing chooses Idle or Run
-- Crouch (hold) and Slide when moving + crouch
-- Fall state when in air and landing logic
-- Hurt/Die action-locks
-- Corner Grab / Climb detection
-- Somersault (special) when attack+jump pressed together quickly
-- Protections: cooldowns, single pointer, input block on overlays, min state durations, sprite-wait, try/catch main loop
+/* ================== MULTIPLAYER + UTILITIES ==================
+  - Simple user system: username stored in localStorage (set by index.html / lobby.html)
+  - Realtime sync: /players/{username}
+  - Each client writes its own state and listens for changes to render other players.
+  - WARNING: passwords are handled on index.html; here we ONLY read localStorage username.
 =========================================================== */
+
+const firebaseConfig = { databaseURL: "https://uvoword-default-rtdb.asia-southeast1.firebasedatabase.app" };
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
 const byId = id => document.getElementById(id);
 const toast = byId('toast');
 function showToast(msg, t=1400){ toast.textContent = msg; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), t); }
+
+const username = localStorage.getItem('uvo_user');
+if(!username) {
+  alert('Tidak ada sesi. Silakan login terlebih dahulu.'); location.href = 'index.html';
+  throw new Error('not logged in');
+}
+
+/* --- Multiplayer state --- */
+const playersRef = db.ref('players');
+let otherPlayers = {}; // { username: {x,y,dir,state,hp,coin,lastSeen} }
+let myPlayerRef = db.ref('players/' + username);
+let syncInterval = null;
+
+/* basic presence: remove on disconnect */
+myPlayerRef.onDisconnect().remove().catch(()=>{ /* ignore */ });
+
+/* subscribe to players list */
+playersRef.on('value', snap=>{
+  const val = snap.val() || {};
+  // update otherPlayers object (exclude self)
+  otherPlayers = {};
+  for(const k in val){
+    if(k === username) continue;
+    otherPlayers[k] = val[k];
+  }
+});
+
+/* --- existing game code adapted to multiplayer --- */
 
 /* Prevent default mobile scroll */
 window.addEventListener('touchmove', e => e.preventDefault(), { passive:false });
@@ -124,12 +156,7 @@ const btnFullLock = byId('btnFullLock'), btnDismiss = byId('btnDismiss');
 function isPortrait(){ return window.innerHeight > window.innerWidth; }
 function showOverlay(){ rotateOverlay.classList.remove('hidden'); rotateOverlay.style.display='flex'; }
 function hideOverlay(){ rotateOverlay.classList.add('hidden'); rotateOverlay.style.display='none'; }
-btnFullLock.addEventListener('click', ()=>{
-  const el = document.documentElement;
-  if(el.requestFullscreen) el.requestFullscreen().then(()=>{ try{ screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); }catch(e){} });
-  else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-  setTimeout(()=>{ if(!isPortrait()) hideOverlay(); }, 600);
-});
+btnFullLock.addEventListener('click', ()=>{ const el = document.documentElement; if(el.requestFullscreen) el.requestFullscreen().then(()=>{ try{ screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); }catch(e){} }); else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen(); setTimeout(()=>{ if(!isPortrait()) hideOverlay(); }, 600); });
 btnDismiss.addEventListener('click', ()=>{ if(!isPortrait()) hideOverlay(); else showToast('Silakan putar perangkat ke landscape'); });
 window.addEventListener('resize', ()=>{ if(isPortrait()) showOverlay(); else hideOverlay();});
 window.addEventListener('orientationchange', ()=> setTimeout(()=>{ if(isPortrait()) showOverlay(); else hideOverlay(); },250) );
@@ -142,32 +169,29 @@ let W = window.innerWidth, H = window.innerHeight;
 function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
 window.addEventListener('resize', resize); resize();
 
-/* WORLD & OBSTACLES (for collision testing & corner detection) */
+/* WORLD & OBSTACLES */
 const GROUND_Y = Math.round(H * 0.78);
 const obstacles = [
-  // sample obstacle: rectangle platform
   { x: 520, y: GROUND_Y - 80, w: 240, h: 16 },
   { x: 920, y: GROUND_Y - 150, w: 160, h: 16 },
 ];
 
-/* HERO */
+/* LOCAL HERO (this client) */
 const hero = {
   x: 180, y: GROUND_Y, vx:0, vy:0, dir:1,
   w:48, h:64,
   state:'idle', frame:0, frameTick:0, onGround:true,
   hp:100, stateSince:0,
-  stateLock:false, // when true, prevents interruption except forced
+  stateLock:false,
   attackStage:0, nextAttackQueued:false,
   prevOnGround:true
 };
 
-/* ANIMATIONS — use states matching filenames you uploaded */
+/* ANIMS & SPRITES (kept as-is) */
 const ANIMS = {
   'idle':4,'idle-2':4,'run':6,'jump':4,'fall':2,'attack1':5,'attack2':6,'attack3':6,
   'hurt':3,'die':7,'crouch':4,'slide':2,'smrslt':4,'crnr-clmb':5,'crnr-jmp':3,'crnr-grab':2
 };
-
-/* Load sprites with robust fallback */
 const SPRITES = {};
 let totalToLoad = 0, loadedCount = 0;
 for(const k in ANIMS){
@@ -182,8 +206,6 @@ for(const k in ANIMS){
     SPRITES[k].push(img);
   }
 }
-
-// Protection 7: pause input until some sprites loaded (min threshold)
 const SPRITE_MIN_THRESHOLD = Math.min(8, totalToLoad);
 let spriteReady = false;
 const spriteWaitStart = performance.now();
@@ -194,23 +216,21 @@ const SPRITE_WAIT_TIMEOUT = 2000;
   } else setTimeout(waitSprites, 80);
 })();
 
-/* INPUT system with protections */
+/* INPUT system */
 const INPUT = { left:false, right:false, jump:false, attack:false, crouch:false, up:false };
-let activePointerId = null; // protection 11: single pointer
-let lastAttackAt = 0, lastJumpAt = 0; // protection 1: cooldowns
+let activePointerId = null;
+let lastAttackAt = 0, lastJumpAt = 0;
 const attackCooldownMs = 120, jumpCooldownMs = 120;
-let queuedAction = null; // protection 12: limit queued actions
-
-// Protection 10: block inputs if overlay visible
+let queuedAction = null;
 function inputAllowed(){ return spriteReady && rotateOverlay.classList.contains('hidden'); }
 
-/* Unified pointer binding util (protection: pointer capture + single pointer) */
+/* pointer binding util */
 function bindBtn(id, onDown, onUp){
   const el = byId(id);
   if(!el) return;
   el.addEventListener('pointerdown', (ev)=>{
     if(!inputAllowed()) return;
-    if(activePointerId !== null && activePointerId !== ev.pointerId) return; // ignore multi pointers
+    if(activePointerId !== null && activePointerId !== ev.pointerId) return;
     activePointerId = ev.pointerId;
     el.setPointerCapture && el.setPointerCapture(ev.pointerId);
     el.classList.add('pressed');
@@ -219,476 +239,206 @@ function bindBtn(id, onDown, onUp){
   el.addEventListener('pointerup', (ev)=>{
     if(activePointerId !== ev.pointerId) return;
     el.releasePointerCapture && el.releasePointerCapture(ev.pointerId);
-    activePointerId = null;
-    el.classList.remove('pressed');
-    try{ onUp(ev); }catch(e){ console.error(e); }
+    activePointerId = null; el.classList.remove('pressed'); try{ onUp(ev); }catch(e){ console.error(e); }
   });
   el.addEventListener('pointercancel', (ev)=>{ if(activePointerId === ev.pointerId){ activePointerId = null; el.classList.remove('pressed'); onUp(ev);} });
   el.addEventListener('pointerleave', (ev)=>{ if(activePointerId === ev.pointerId){ el.classList.remove('pressed'); }});
 }
-
-/* bind controls */
 bindBtn('btnLeft', ()=>INPUT.left=true, ()=>INPUT.left=false);
 bindBtn('btnRight', ()=>INPUT.right=true, ()=>INPUT.right=false);
-bindBtn('btnJump', ()=>{
-  if(!inputAllowed()) return;
-  const now = performance.now();
-  if(now - lastJumpAt < jumpCooldownMs) return;
-  lastJumpAt = now;
-  INPUT.jump = true;
-}, ()=>{ INPUT.jump = false; });
-
-bindBtn('btnAttack', ()=>{
-  if(!inputAllowed()) return;
-  const now = performance.now();
-  if(now - lastAttackAt < attackCooldownMs) return;
-  lastAttackAt = now;
-  INPUT.attack = true;
-  queuedAction = 'attack';
-}, ()=>{ INPUT.attack = false; queuedAction = null; });
-
+bindBtn('btnJump', ()=>{ if(!inputAllowed()) return; const now = performance.now(); if(now - lastJumpAt < jumpCooldownMs) return; lastJumpAt = now; INPUT.jump = true; }, ()=>{ INPUT.jump = false; });
+bindBtn('btnAttack', ()=>{ if(!inputAllowed()) return; const now = performance.now(); if(now - lastAttackAt < attackCooldownMs) return; lastAttackAt = now; INPUT.attack = true; queuedAction = 'attack'; }, ()=>{ INPUT.attack = false; queuedAction = null; });
 bindBtn('btnCrouch', ()=>INPUT.crouch = true, ()=>INPUT.crouch = false);
 
-/* Keyboard (desktop) */
-window.addEventListener('keydown', (e)=>{
-  if(!inputAllowed()) return;
-  if(e.repeat) return;
-  if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = true;
-  if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = true;
-  if(e.key === 'ArrowUp' || e.key === 'w') INPUT.up = true;
-  if((e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') && (performance.now() - lastJumpAt > jumpCooldownMs)){
-    lastJumpAt = performance.now(); INPUT.jump = true;
-  }
-  if(e.key === 'j' || e.key === 'k') {
-    if(performance.now() - lastAttackAt > attackCooldownMs){ lastAttackAt = performance.now(); INPUT.attack = true; queuedAction='attack'; }
-  }
-  if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = true;
-});
-window.addEventListener('keyup', (e)=>{
-  if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = false;
-  if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = false;
-  if(e.key === 'ArrowUp' || e.key === 'w') INPUT.up = false;
-  if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = false;
-  if(e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') INPUT.jump = false;
-});
+window.addEventListener('keydown', (e)=>{ if(!inputAllowed()) return; if(e.repeat) return; if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = true; if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = true; if(e.key === 'ArrowUp' || e.key === 'w') INPUT.up = true; if((e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') && (performance.now() - lastJumpAt > jumpCooldownMs)){ lastJumpAt = performance.now(); INPUT.jump = true; } if(e.key === 'j' || e.key === 'k'){ if(performance.now() - lastAttackAt > attackCooldownMs){ lastAttackAt = performance.now(); INPUT.attack = true; queuedAction='attack'; } } if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = true; });
+window.addEventListener('keyup', (e)=>{ if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = false; if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = false; if(e.key === 'ArrowUp' || e.key === 'w') INPUT.up = false; if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = false; if(e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') INPUT.jump = false; });
 
-/* PROTECTION 5: clamp velocities */
+/* physics and protections */
 const VX_MAX = 12, VY_MAX = 40, VY_MIN = -28;
-
-/* PROTECTION 6: min state durations (ms) to avoid flicker) */
-const MIN_STATE_DUR = {
-  'attack1': 140, 'attack2': 140, 'attack3':140, 'hurt': 350, 'die': 99999, 'jump': 120, 'fall': 100, 'slide': 220, 'crnr-grab': 120
-};
-
-/* helper: loopable states */
+const MIN_STATE_DUR = { 'attack1': 140, 'attack2': 140, 'attack3':140, 'hurt': 350, 'die': 99999, 'jump': 120, 'fall': 100, 'slide': 220, 'crnr-grab': 120 };
 const LOOP_STATES = new Set(['idle','run','fall','crouch','idle-2']);
-
-/* SAFETY helpers */
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function safeNumber(v,def=0){ return (isFinite(v) && !isNaN(v)) ? v : def; }
 
-/* Collision helpers (AABB) */
-function rectOfHero(){
-  // hero box anchored by bottom-center
-  return { x: hero.x - hero.w/2, y: hero.y - hero.h, w: hero.w, h: hero.h };
+/* collision helpers */
+function rectOfHero(h = hero){
+  return { x: h.x - h.w/2, y: h.y - h.h, w: h.w, h: h.h };
 }
-function rectOverlap(a,b){
-  return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
-}
-function resolveAABBCollision(h, obs){
-  // separate axis resolution
-  const overlapX = Math.min(h.x + h.w - obs.x, obs.x + obs.w - h.x);
-  const overlapY = Math.min(h.y + h.h - obs.y, obs.y + obs.h - h.y);
+function rectOverlap(a,b){ return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h); }
+function resolveAABBCollision(hRect, obs){
+  const overlapX = Math.min(hRect.x + hRect.w - obs.x, obs.x + obs.w - hRect.x);
+  const overlapY = Math.min(hRect.y + hRect.h - obs.y, obs.y + obs.h - hRect.y);
   if(overlapX <= 0 || overlapY <= 0) return false;
   if(overlapX < overlapY){
-    // resolve X
-    if(h.x + h.w/2 < obs.x + obs.w/2){
+    if(hRect.x + hRect.w/2 < obs.x + obs.w/2){
       hero.x -= overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1);
     } else {
       hero.x += overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1);
     }
     return true;
   } else {
-    // resolve Y
-    if(h.y + h.h/2 < obs.y + obs.h/2){
-      // hero above obstacle
+    if(hRect.y + hRect.h/2 < obs.y + obs.h/2){
       hero.y -= overlapY + 0.5; hero.vy = 0; hero.onGround = true;
     } else {
-      // hero below obstacle (bump head)
       hero.y += overlapY + 0.5; hero.vy = Math.max(hero.vy, 0);
     }
     return true;
   }
 }
 
-/* STATE machine core */
-/* setState: optionally force (bypass locks), optionally lock (non-interruptible) */
-function canChangeState(next, force=false){
-  if(hero.state === next) return false;
-  if(hero.state === 'die' && next !== 'die') return false;
-  if(hero.stateLock && !force) return false;
-  // allow except die blocking; for safety we don't use priority blocking here,
-  // non-interruptible states are controlled via hero.stateLock.
-  // MIN_STATE_DUR will still prevent too-frequent switching.
-  return true;
-}
-function setState(next, opts = {force:false, lock:false}){
-  const now = performance.now();
-  // prevent switching too quickly
-  if(!opts.force && MIN_STATE_DUR[hero.state] && now - hero.stateSince < MIN_STATE_DUR[hero.state]) return false;
-  if(!canChangeState(next, !!opts.force)) return false;
-  hero.state = next;
-  hero.frame = 0;
-  hero.frameTick = 0;
-  hero.stateSince = now;
-  hero.stateLock = !!opts.lock;
-  return true;
-}
-/* Force finish of current state (used on animation end) */
-function forceState(next){
-  return setState(next, {force:true, lock:false});
-}
-
-/* helpers for attack combo */
-function startAttack(stage){
-  stage = Math.max(1, Math.min(3, stage));
-  hero.attackStage = stage;
-  hero.nextAttackQueued = false;
-  setState('attack' + stage, {force:true, lock:true});
-}
-
-/* detect corner-edge (simple heuristic) */
-function findNearbyEdge(){
-  const margin = 18;
-  const topTolerance = 10;
-  const heroFeetX = hero.x;
-  for(const obs of obstacles){
-    const topY = obs.y;
-    if(Math.abs((hero.y) - topY) <= topTolerance){
-      // left edge
-      if(Math.abs(heroFeetX - obs.x) <= margin) return {obs, side:'left'};
-      if(Math.abs(heroFeetX - (obs.x + obs.w)) <= margin) return {obs, side:'right'};
-    }
-  }
-  return null;
-}
-
-/* Flag to detect double-press for somersault (attack + jump together) */
+/* state machine (same as your original) */
+function canChangeState(next, force=false){ if(hero.state === next) return false; if(hero.state === 'die' && next !== 'die') return false; if(hero.stateLock && !force) return false; return true; }
+function setState(next, opts = {force:false, lock:false}){ const now = performance.now(); if(!opts.force && MIN_STATE_DUR[hero.state] && now - hero.stateSince < MIN_STATE_DUR[hero.state]) return false; if(!canChangeState(next, !!opts.force)) return false; hero.state = next; hero.frame = 0; hero.frameTick = 0; hero.stateSince = now; hero.stateLock = !!opts.lock; return true; }
+function forceState(next){ return setState(next, {force:true, lock:false}); }
+function startAttack(stage){ stage = Math.max(1, Math.min(3, stage)); hero.attackStage = stage; hero.nextAttackQueued = false; setState('attack' + stage, {force:true, lock:true}); }
+function findNearbyEdge(){ const margin = 18; const topTolerance = 10; const heroFeetX = hero.x; for(const obs of obstacles){ const topY = obs.y; if(Math.abs((hero.y) - topY) <= topTolerance){ if(Math.abs(heroFeetX - obs.x) <= margin) return {obs, side:'left'}; if(Math.abs(heroFeetX - (obs.x + obs.w)) <= margin) return {obs, side:'right'}; } } return null; }
 let lastAttackJumpTogether = 0;
 
-/* main update loop (with try/catch protection) */
-let last = performance.now();
+/* update & draw (adapted to write/read DB) */
+let lastT = performance.now();
 function update(dt){
   try {
-    // safety
     hero.x = safeNumber(hero.x, 200); hero.y = safeNumber(hero.y, GROUND_Y);
     hero.vx = safeNumber(hero.vx, 0); hero.vy = safeNumber(hero.vy, 0);
 
-    // pause inputs until sprite ready
     if(!spriteReady){
-      hero.vx *= 0.8; hero.vy += 0.6; // gentle physics but no inputs
-      // still progress gravity and basic landing
+      hero.vx *= 0.8; hero.vy += 0.6;
     } else {
-      // process input -> state transitions with respect to locks and combos
-
-      // Detect somersault: attack + jump together (within 160ms of each other)
       if(INPUT.attack && INPUT.jump){
         const now = performance.now();
-        if(now - lastAttackJumpTogether > 300){
-          lastAttackJumpTogether = now;
+        if(now - lastAttackJumpTogether > 300){ lastAttackJumpTogether = now; }
+        if(hero.onGround && canChangeState('smrslt')){ setState('smrslt', {force:true, lock:true}); hero.vy = -10; hero.onGround = false; }
+      }
+      if(!hero.onGround){
+        if(INPUT.attack && canChangeState('attack1') && !hero.stateLock){ startAttack(1); } else { if(hero.vy > 1 && hero.state !== 'fall') setState('fall', {force:true, lock:false}); }
+      } else {
+        if(INPUT.attack && !hero.stateLock && (performance.now() - hero.stateSince > 40)) { startAttack(1); }
+        else if(INPUT.attack && hero.state && hero.state.startsWith('attack') && hero.stateLock){ if(hero.attackStage > 0 && hero.attackStage < 3) { hero.nextAttackQueued = true; } }
+        if(INPUT.crouch && (INPUT.left || INPUT.right) && hero.onGround && !hero.stateLock){
+          if(setState('slide', {force:true, lock:true})){ hero.vx = (INPUT.right ? 6 : -6); }
+        } else if(INPUT.crouch && !INPUT.left && !INPUT.right && hero.onGround && !hero.stateLock){
+          setState('crouch', {force:true, lock:false}); hero.vx *= 0.6;
         }
-        // trigger somersault if on ground and not locked
-        if(hero.onGround && canChangeState('smrslt')){
-          setState('smrslt', {force:true, lock:true});
-          // give small upward impulse
-          hero.vy = -10; hero.onGround = false;
+        const edge = findNearbyEdge();
+        if(edge && INPUT.up && hero.onGround && !hero.stateLock){ setState('crnr-grab', {force:true, lock:true}); }
+        if(INPUT.jump && hero.onGround && !hero.stateLock){ hero.vy = -13.2; hero.onGround = false; setState('jump', {force:true, lock:false}); INPUT.jump = false; }
+        if(!hero.stateLock){
+          if(INPUT.left || INPUT.right){ hero.dir = INPUT.right ? 1 : -1; setState('run', {force:false, lock:false}); hero.vx += (INPUT.right ? 1 : -1) * 0.9; } else { setState('idle', {force:false, lock:false}); hero.vx *= 0.78; }
         }
       }
-
-      // If in air, prioritize air-specific inputs
-      if(!hero.onGround){
-        // allow attack in air (optional) but keep state 'jump'/'fall' unless attacking queued
-        if(INPUT.attack && canChangeState('attack1') && !hero.stateLock){
-          // allow aerial attack as grounded attack? We'll use same combo but unlocked.
-          startAttack(1);
-        } else {
-          // if falling quickly -> fall state
-          if(hero.vy > 1 && hero.state !== 'fall') {
-            setState('fall', {force:true, lock:false});
-          }
-        }
-      } else {
-        // On ground logic
-        // attack input -> start/queue combos
-        if(INPUT.attack && !hero.stateLock && (performance.now() - hero.stateSince > 40)){
-          // start combo
-          startAttack(1);
-        } else if(INPUT.attack && hero.state && hero.state.startsWith('attack') && hero.stateLock){
-          // if during attack we press attack quickly, queue next stage
-          if(hero.attackStage > 0 && hero.attackStage < 3) {
-            hero.nextAttackQueued = true;
-          }
-        }
-
-        // crouch/slide: if crouching and moving -> slide
-        if(INPUT.crouch && (INPUT.left || INPUT.right) && hero.onGround && !hero.stateLock){
-          if(setState('slide', {force:true, lock:true})){
-            // slide impulse
-            hero.vx = (INPUT.right ? 6 : -6);
-          }
-        } else if(INPUT.crouch && !INPUT.left && !INPUT.right && hero.onGround && !hero.stateLock){
-          // hold crouch
-          setState('crouch', {force:true, lock:false});
-          hero.vx *= 0.6;
-        }
-
-        // corner grab: if near edge and press up
-        const edge = findNearbyEdge();
-        if(edge && INPUT.up && hero.onGround && !hero.stateLock){
-          // grab the corner
-          setState('crnr-grab', {force:true, lock:true});
-        }
-
-        // jump consumption (single impulse)
-        if(INPUT.jump && hero.onGround && !hero.stateLock){
-          hero.vy = -13.2; hero.onGround = false;
-          // keep running momentum if was running
-          if(hero.state === 'run' || INPUT.left || INPUT.right) {
-            setState('jump', {force:true, lock:false});
-          } else {
-            setState('jump', {force:true, lock:false});
-          }
-          INPUT.jump = false;
-        }
-
-        // run vs idle while on ground (only when not locked by action)
-        if(!hero.stateLock){
-          if(INPUT.left || INPUT.right){
-            hero.dir = INPUT.right ? 1 : -1;
-            setState('run', {force:false, lock:false});
-            // accelerate
-            hero.vx += (INPUT.right ? 1 : -1) * 0.9;
-          } else {
-            setState('idle', {force:false, lock:false});
-            hero.vx *= 0.78;
-          }
-        }
-      } // end onGround branch
     }
 
-    // physics
     hero.vy += 0.66;
-    // clamps (protection 5)
     hero.vx = clamp(hero.vx, -VX_MAX, VX_MAX);
     hero.vy = clamp(hero.vy, VY_MIN, VY_MAX);
+    if(hero.onGround && !INPUT.left && !INPUT.right && !hero.stateLock){ hero.vx *= 0.7; }
+    hero.x += hero.vx; hero.y += hero.vy;
 
-    // apply friction on ground when not moving
-    if(hero.onGround && !INPUT.left && !INPUT.right && !hero.stateLock){
-      hero.vx *= 0.7;
-    }
-
-    hero.x += hero.vx;
-    hero.y += hero.vy;
-
-    // base ground
     const wasOnGround = hero.onGround;
     if(hero.y >= GROUND_Y){
-      if(!wasOnGround && Math.abs(hero.vy) > 18){
-        // heavy landing => hurt
-        hero.hp = clamp(hero.hp - 8, 0, 100);
-        setState('hurt', {force:true, lock:true});
-      }
+      if(!wasOnGround && Math.abs(hero.vy) > 18){ hero.hp = clamp(hero.hp - 8, 0, 100); setState('hurt', {force:true, lock:true}); }
       hero.y = GROUND_Y; hero.vy = 0; hero.onGround = true;
     } else hero.onGround = false;
 
-    // obstacle collisions (protection 8)
+    // obstacle collisions
     const hRect = rectOfHero();
-    for(const obs of obstacles){
-      if(rectOverlap(hRect, obs)) {
-        resolveAABBCollision(hRect, obs);
-      }
-    }
+    for(const obs of obstacles){ if(rectOverlap(hRect, obs)) { resolveAABBCollision(hRect, obs); } }
 
-    // landing detection: just landed this frame
     if(!wasOnGround && hero.onGround){
-      // landing completes jump/fall
-      // if currently in a locking jump state, we should release and transition based on inputs
-      // If hero was in 'jump' or 'fall' state or 'smrslt', pick next state
-      // unlock any non-die/hurt locks that were air-only
       hero.stateLock = hero.state === 'die' || hero.state === 'hurt';
       if(hero.state === 'smrslt' || hero.state === 'jump' || hero.state === 'fall'){
         if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle');
       }
     }
 
-    // obstacle edge climb finalization (if in crnr-grab and up pressed again -> climb)
-    if(hero.state === 'crnr-grab' && hero.stateLock){
-      // allow second up press to climb
-      if(INPUT.up){
-        setState('crnr-clmb', {force:true, lock:true});
-      }
-    }
-    if(hero.state === 'crnr-clmb'){
-      // after animation end we'll reposition hero on top
-      // but actual position setting occurs in animation complete handler
-    }
+    if(hero.state === 'crnr-grab' && hero.stateLock){ if(INPUT.up){ setState('crnr-clmb', {force:true, lock:true}); } }
+    if(hero.state === 'crnr-clmb'){ const edge = findNearbyEdge(); if(edge){ hero.y = edge.obs.y; if(edge.side === 'left') hero.x = edge.obs.x + 20; else hero.x = edge.obs.x + edge.obs.w - 20; } hero.stateLock = false; if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); }
 
-    // clamp hero inside world bounds (protection 1)
     hero.x = clamp(hero.x, 32, Math.max(600, W - 32));
 
-    // animation tick: protection 2 & 3 (frame safe checks)
     hero.frameTick += Math.max(1, Math.floor(dt / 16));
     const animMeta = ANIMS[hero.state] || ANIMS['idle'];
     const ticksPerFrame = (hero.state === 'run' ? 4 : (hero.state.startsWith('attack') ? 6 : 8));
-    if(hero.frameTick >= ticksPerFrame){
-      hero.frameTick = 0;
-      hero.frame++;
-      if(hero.frame >= animMeta){
-        // animation ended
-        handleAnimationComplete(hero.state);
-      }
-    }
+    if(hero.frameTick >= ticksPerFrame){ hero.frameTick = 0; hero.frame++; if(hero.frame >= animMeta){ handleAnimationComplete(hero.state); } }
 
-    // protection 11: reset queuedAction after processing if unused
     if(queuedAction && queuedAction === 'attack' && !INPUT.attack) queuedAction = null;
-
-    // protection 9 ensure safe numbers
     hero.x = safeNumber(hero.x, 200); hero.y = safeNumber(hero.y, GROUND_Y);
 
+    // --- WRITE my player to Firebase (throttled elsewhere) ---
   } catch(err){
     console.error('update error', err);
-    // protection 13: don't crash loop - attempt safe reset
     hero.vx = 0; hero.vy = 0; hero.state = 'idle'; hero.frame = 0; hero.stateLock = false;
   }
 }
 
-/* Handle logic when an animation finishes (non-looping or reached last frame) */
 function handleAnimationComplete(stateEnded){
-  // If animation is loopable, reset frame normally
-  if(LOOP_STATES.has(stateEnded)){
-    hero.frame = hero.frame % (ANIMS[stateEnded] || 1);
-    return;
-  }
-
-  // Attack combo handling
+  if(LOOP_STATES.has(stateEnded)){ hero.frame = hero.frame % (ANIMS[stateEnded] || 1); return; }
   if(stateEnded.startsWith('attack')){
-    // if queued next attack -> advance combo
-    if(hero.nextAttackQueued && hero.attackStage < 3){
-      startAttack(hero.attackStage + 1); // will set stateLock true
-      return;
-    } else {
-      // finish combo: unlock and go to run/idle depending on inputs
-      hero.attackStage = 0; hero.nextAttackQueued = false; hero.stateLock = false;
-      if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle');
-      return;
-    }
+    if(hero.nextAttackQueued && hero.attackStage < 3){ startAttack(hero.attackStage + 1); return; } else { hero.attackStage = 0; hero.nextAttackQueued = false; hero.stateLock = false; if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); return; }
   }
-
-  // Slide finished -> to run/idle
-  if(stateEnded === 'slide'){
-    hero.stateLock = false;
-    hero.vx = 0;
-    if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle');
-    return;
-  }
-
-  // Crouch ended? (crouch is hold-based, so just loop)
-  if(stateEnded === 'crouch'){
-    if(INPUT.crouch) {
-      hero.frame = 0; // keep crouch
-      return;
-    } else {
-      hero.stateLock = false;
-      if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle');
-      return;
-    }
-  }
-
-  // Jump/Smrslt/Fall: when their animation finishes, if on ground go to run/idle, else go to fall
-  if(stateEnded === 'jump' || stateEnded === 'smrslt' || stateEnded === 'fall'){
-    hero.stateLock = false;
-    if(hero.onGround){
-      if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle');
-    } else {
-      forceState('fall');
-    }
-    return;
-  }
-
-  // Corner grab/climb
-  if(stateEnded === 'crnr-grab'){
-    // if still grabbing but no second up -> remain grabbed briefly
-    hero.frame = 0; // keep small hold
-    return;
-  }
-  if(stateEnded === 'crnr-clmb'){
-    // reposition hero on top of the platform nearest the edge
-    const edge = findNearbyEdge();
-    if(edge){
-      // place hero on top-center slightly inward
-      hero.y = edge.obs.y;
-      if(edge.side === 'left') hero.x = edge.obs.x + 20;
-      else hero.x = edge.obs.x + edge.obs.w - 20;
-    }
-    hero.stateLock = false;
-    if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle');
-    return;
-  }
-
-  // Hurt finished -> resume based on movement
-  if(stateEnded === 'hurt'){
-    hero.stateLock = false;
-    if(hero.hp <= 0) { setState('die', {force:true, lock:true}); return; }
-    if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle');
-    return;
-  }
-
-  // Die: stay in die (non-interruptible)
-  if(stateEnded === 'die'){
-    hero.stateLock = true;
-    // disable inputs (handled globally by checking hero.state === 'die')
-    return;
-  }
-
-  // Generic default: if on ground -> idle/run, else fall
-  if(hero.onGround){
-    if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle');
-  } else {
-    forceState('fall');
-  }
+  if(stateEnded === 'slide'){ hero.stateLock = false; hero.vx = 0; if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); return; }
+  if(stateEnded === 'crouch'){ if(INPUT.crouch) { hero.frame = 0; return; } else { hero.stateLock = false; if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); return; } }
+  if(stateEnded === 'jump' || stateEnded === 'smrslt' || stateEnded === 'fall'){ hero.stateLock = false; if(hero.onGround){ if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); } else { forceState('fall'); } return; }
+  if(stateEnded === 'crnr-grab'){ hero.frame = 0; return; }
+  if(stateEnded === 'crnr-clmb'){ const edge = findNearbyEdge(); if(edge){ hero.y = edge.obs.y; if(edge.side === 'left') hero.x = edge.obs.x + 20; else hero.x = edge.obs.x + edge.obs.w - 20; } hero.stateLock = false; if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); return; }
+  if(stateEnded === 'hurt'){ hero.stateLock = false; if(hero.hp <= 0) { setState('die', {force:true, lock:true}); return; } if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); return; }
+  if(stateEnded === 'die'){ hero.stateLock = true; return; }
+  if(hero.onGround){ if(INPUT.left || INPUT.right) forceState('run'); else forceState('idle'); } else { forceState('fall'); }
 }
 
-/* DRAW with protections */
+/* DRAW including other players */
 function draw(){
   try {
     ctx.clearRect(0,0,W,H);
-    // background
     const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#242628'); g.addColorStop(1,'#101214');
     ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 
-    // obstacles
     for(const obs of obstacles){
       ctx.fillStyle = '#2b2c2f';
       ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
       ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
     }
 
-    // hero draw (protection 3 & 4 & 15)
+    // draw other players (from realtime DB)
+    for(const uname in otherPlayers){
+      const p = otherPlayers[uname];
+      // draw nickname above
+      const nickX = p.x || 100;
+      const nickY = (p.y || GROUND_Y) - (p.h || 64) - 18;
+      // nickname background
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      const text = uname + (p.coin !== undefined ? ' ✦' + p.coin : '');
+      ctx.font = '14px system-ui';
+      const tw = ctx.measureText(text).width;
+      ctx.fillRect(nickX - tw/2 - 8, nickY - 14, tw + 16, 20);
+      ctx.fillStyle = '#fff'; ctx.fillText(text, nickX - tw/2, nickY);
+      // draw remote hero as rectangle or sprite if available
+      ctx.save();
+      ctx.translate(nickX, p.y || GROUND_Y);
+      ctx.scale((p.dir === -1) ? -1 : 1, 1);
+      // try to use same sprite set if available
+      const animSet = SPRITES[p.state] && SPRITES[p.state].length ? SPRITES[p.state] : (SPRITES['idle'] || []);
+      const frameIndex = (p.frame || 0) % (animSet.length || 1);
+      const img = animSet[frameIndex] || null;
+      if(img && img.complete && img.naturalWidth){
+        const scale = Math.max(1.0, Math.min(2.0, (H/720) * 1.6));
+        const w = img.width * scale, h = img.height * scale;
+        try { ctx.drawImage(img, -w/2, -h, w, h); } catch(e){ ctx.fillStyle='#8a8d90'; ctx.fillRect(-24, -64, 48, 64); }
+      } else {
+        ctx.fillStyle = '#8a8d90'; ctx.fillRect(-24, -64, 48, 64);
+      }
+      ctx.restore();
+    }
+
+    // draw my hero (local)
     const animSet = SPRITES[hero.state] && SPRITES[hero.state].length ? SPRITES[hero.state] : (SPRITES['idle'] || []);
     const frameIndex = hero.frame % (animSet.length || 1);
     const img = animSet[frameIndex] || null;
     if(img && img.complete && img.naturalWidth){
       const scale = Math.max(1.2, Math.min(2.0, (H/720) * 1.8));
       const w = img.width * scale, h = img.height * scale;
-      ctx.save();
-      ctx.translate(hero.x, hero.y);
-      ctx.scale(hero.dir, 1);
-      try {
-        ctx.drawImage(img, -w/2, -h, w, h);
-      } catch(e){
-        // fallback: rectangle when drawImage fails (protection 3)
-        ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h);
-      }
+      ctx.save(); ctx.translate(hero.x, hero.y); ctx.scale(hero.dir, 1);
+      try { ctx.drawImage(img, -w/2, -h, w, h); } catch(e){ ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h); }
       ctx.restore();
     } else {
       ctx.save(); ctx.translate(hero.x, hero.y);
@@ -696,62 +446,82 @@ function draw(){
       ctx.restore();
     }
 
-    // debug: show state text (optional)
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    // my nickname above hero
     ctx.font = '14px system-ui';
-    ctx.fillText(`State: ${hero.state} ${hero.stateLock ? '(locked)':''}`, 12, 60);
-    ctx.fillText(`OnGround:${hero.onGround} vx:${hero.vx.toFixed(2)} vy:${hero.vy.toFixed(2)}`, 12, 80);
+    const myText = username + ' ✦' + (myCoin || 0);
+    const mtw = ctx.measureText(myText).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(hero.x - mtw/2 - 8, hero.y - hero.h - 20, mtw + 16, 20);
+    ctx.fillStyle = '#fff'; ctx.fillText(myText, hero.x - mtw/2, hero.y - hero.h - 6);
 
-    // overlays like HUD shadow
+    // debug info
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = '14px system-ui';
+    ctx.fillText(`State: ${hero.state} ${hero.stateLock ? '(locked)':''}`, 12, 60);
+    ctx.fillText(`OnGround:${hero.onGround} vx:${hero.vx.toFixed(2)} vy:${hero.vy.toFixed(2)} Players:${Object.keys(otherPlayers).length}`, 12, 80);
     ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(0,0,W,48);
 
-  } catch(err){
-    console.error('draw error', err);
-  }
+  } catch(err){ console.error('draw error', err); }
 }
 
-/* GAME LOOP (time-based) */
-let lastT = performance.now();
+/* GAME LOOP */
+let lastTime = performance.now();
 function loop(now){
   try {
-    const dt = now - lastT; lastT = now;
-    // if hero is dead, block inputs
-    if(hero.state === 'die') {
-      INPUT.left = INPUT.right = INPUT.jump = INPUT.attack = INPUT.crouch = false;
-    }
+    const dt = now - lastTime; lastTime = now;
+    if(hero.state === 'die') { INPUT.left = INPUT.right = INPUT.jump = INPUT.attack = INPUT.crouch = false; }
     update(dt); draw();
   } catch(e){ console.error('main loop error', e); }
   requestAnimationFrame(loop);
 }
 
-// start once some sprites loaded (protection 7)
+/* start when sprites ready */
 (function startWhenReady(){
   if(spriteReady || performance.now() - spriteWaitStart > SPRITE_WAIT_TIMEOUT){
-    lastT = performance.now();
+    lastTime = performance.now();
     requestAnimationFrame(loop);
-    showToast('Siap! Gunakan kontrol pojok untuk main');
-  } else {
-    setTimeout(startWhenReady, 80);
-  }
+    showToast('Terhubung — game dimulai');
+  } else { setTimeout(startWhenReady, 80); }
 })();
 
-/* update UI HP bar */
+/* HP bar update */
 setInterval(()=>{ const hb = byId('hpFill'); if(hb) hb.style.width = hero.hp + '%'; }, 120);
 
-/* protection 15: remove watermark if any */
-setTimeout(()=>{
-  Array.from(document.querySelectorAll('img,div')).forEach(el=>{
-    try{
-      if(el.innerText && /apkpure/i.test(el.innerText)) el.remove();
-      if(el.src && typeof el.src === 'string' && /apkpure/i.test(el.src)) el.remove();
-    }catch(e){}
-  });
-}, 900);
+/* presence & sync: write my state periodically and listen for other players is above (playersRef.on) */
+/* throttle writes to ~10Hz */
+let lastSync = 0;
+let myCoin = 0;
+async function writeMyState(){
+  const now = Date.now();
+  if(now - lastSync < 90) return; // ~11Hz
+  lastSync = now;
+  const payload = {
+    username,
+    x: Math.round(hero.x),
+    y: Math.round(hero.y),
+    vx: Math.round(hero.vx*100)/100,
+    vy: Math.round(hero.vy*100)/100,
+    dir: hero.dir,
+    state: hero.state,
+    frame: hero.frame,
+    hp: hero.hp,
+    coin: myCoin,
+    lastSeen: firebase.database.ServerValue.TIMESTAMP
+  };
+  try {
+    await myPlayerRef.set(payload);
+    // ensure onDisconnect cleanup already set earlier
+  } catch(e){ console.warn('writeMyState fail', e); }
+}
 
-/* safety: clear inputs when tab hidden */
-document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ INPUT.left = INPUT.right = INPUT.attack = INPUT.jump = INPUT.crouch = false; } });
+/* poll writes inside game loop tick using interval */
+setInterval(()=>{ writeMyState(); }, 100);
 
-/* show hint for desktop */
+/* also listen for updates to my own user coin (if updated from elsewhere) */
+db.ref('users/' + username + '/coin').on('value', s => { if(s.exists()) myCoin = s.val(); });
+
+/* cleanup on unload */
+window.addEventListener('beforeunload', ()=>{ try{ myPlayerRef.remove(); }catch(e){} });
+
+/* show desktop hint */
 if(window.innerWidth > 900) setTimeout(()=> showToast('Gunakan A/D atau Panah ← → untuk bergerak, Space untuk lompat, J untuk serang'), 1200);
 </script>
 </body>
