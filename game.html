@@ -4,11 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#141516">
-<title>UvoWorld — Fix Animations & Protections (Fixed)</title>
+<title>UvoWorld — Fix Animations & Protections</title>
 <style>
   :root{
     --bg:#0f1113; --panel:#1d1f22; --accent:#0b84ff; --muted:#9aa0a6;
-    --btn-size:72px; --hp-green: #4ade80; --hp-yellow:#f59e0b; --hp-red:#ef4444;
+    --btn-size:72px;
   }
   *{box-sizing:border-box}
   html,body{height:100%;width:100%;margin:0;padding:0;overflow:hidden;background:var(--bg);color:#fff;font-family:Inter,system-ui,Arial;}
@@ -23,10 +23,9 @@
   .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
   /* HUD top */
   .hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;z-index:800;pointer-events:none}
-  .hp-box{pointer-events:auto;background:linear-gradient(180deg,#1b1c1e,#161718);padding:8px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);display:flex;gap:10px;align-items:center;min-width:220px}
-  .hp-bar{width:160px;height:18px;background:#232425;border-radius:10px;overflow:hidden;position:relative}
-  .hp-fill{height:100%;width:100%;background:linear-gradient(90deg,var(--hp-green),#10b981);transition:width .32s,background .32s}
-  .hp-text{font-size:13px;color:var(--muted);min-width:44px;text-align:right}
+  .hp-box{pointer-events:auto;background:linear-gradient(180deg,#1b1c1e,#161718);padding:8px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);display:flex;gap:10px;align-items:center}
+  .hp-bar{width:160px;height:18px;background:#232425;border-radius:10px;overflow:hidden}
+  .hp-fill{height:100%;width:100%;background:linear-gradient(90deg,#ff6b6b,#ff2b2b);transition:width .32s}
   .menu{pointer-events:auto;background:linear-gradient(180deg,#1b1c1e,#141516);padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);color:var(--muted)}
   /* Controls bottom corners */
   .controls{position:fixed;left:0;right:0;bottom:18px;display:flex;justify-content:space-between;align-items:end;padding:0 12px;z-index:900;pointer-events:none}
@@ -58,12 +57,7 @@
 
   <!-- HUD -->
   <div class="hud">
-    <div class="hp-box" aria-hidden="false">
-      <svg width="18" height="18" viewBox="0 0 24 24" style="opacity:.95"><path d="M12 21s-8-4.5-8-11a5 5 0 0 1 10 0 5 5 0 0 1 10 0c0 6.5-8 11-8 11z" fill="#ff6b6b"/></svg>
-      <div style="font-size:13px;color:var(--muted)">HP</div>
-      <div class="hp-bar"><div id="hpFill" class="hp-fill"></div></div>
-      <div class="hp-text" id="hpText">100%</div>
-    </div>
+    <div class="hp-box" aria-hidden="false"><svg width="18" height="18" viewBox="0 0 24 24" style="opacity:.95"><path d="M12 21s-8-4.5-8-11a5 5 0 0 1 10 0 5 5 0 0 1 10 0c0 6.5-8 11-8 11z" fill="#ff6b6b"/></svg><div style="font-size:13px;color:var(--muted)">HP</div><div class="hp-bar"><div id="hpFill" class="hp-fill"></div></div></div>
     <div class="menu">Menu</div>
   </div>
 
@@ -103,17 +97,23 @@
   <div id="toast" role="status" aria-live="polite">Game siap</div>
 
 <script>
-/* ================== FIXED + PROTECTIONS ==================
-Implemented many animation & input protections requested.
-Highlights:
-- Force state transitions when an animation finishes (prevent stuck repeating attacks).
-- setState(next, {force:true}) to override priority for end-of-animation resets.
-- Input buffer for short inputs (e.g., tap jump slightly before landing).
-- Anti-spam & button cooldowns, single-pointer capture, left/right conflict resolution.
-- Min state durations, stuck-state watchdog, NaN safety, clamping, obstacle collision.
-- Improved HP UI updates + color change depending on HP.
-
-The code is structured & commented so you can tweak timings easily.
+/* ================== UTILITIES & PROTECTIONS LIST ==================
+We will implement 15 protections in code:
+1) Input debounce & cooldown for attack/jump (attackCooldownMs, jumpCooldownMs)
+2) Action-lock for non-interruptible states (attack/hurt/die)
+3) Frame-index safe checks before drawing
+4) Fallback sprite mapping if missing
+5) Clamp velocities to max limits
+6) Minimum state duration to prevent flicker
+7) Pause input until minimum sprites loaded
+8) Collision resolution with separate-axis separation (AABB)
+9) NaN/Infinity checks (reset to safe values)
+10) Overlay blocking input when rotate/overlay active
+11) Single-pointer tracking to avoid multi-touch edge cases
+12) Limit queued input actions to 1 (prevent spam)
+13) Try/catch around main loop to prevent fatal crash
+14) Prevent pointer default scroll/drag on window
+15) Remove external watermark heuristically (best-effort)
 =========================================================== */
 
 const byId = id => document.getElementById(id);
@@ -152,23 +152,25 @@ function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = win
 window.addEventListener('resize', resize); resize();
 
 /* WORLD & OBSTACLES (for collision testing) */
-let GROUND_Y = Math.round(H * 0.78);
+const GROUND_Y = Math.round(H * 0.78);
 const obstacles = [
+  // sample obstacle: rectangle platform
   { x: 520, y: GROUND_Y - 80, w: 240, h: 16 },
   { x: 920, y: GROUND_Y - 150, w: 160, h: 16 },
 ];
-window.addEventListener('resize', ()=>{ GROUND_Y = Math.round(window.innerHeight * 0.78); });
 
 /* HERO */
 const hero = {
   x: 180, y: GROUND_Y, vx:0, vy:0, dir:1,
   w:48, h:64,
-  state:'idle', frame:0, frameTick:0, onGround:true, hp:100, stateSince:0,
-  lastFrameChange: performance.now(), lastStateChange: performance.now()
+  state:'idle', frame:0, frameTick:0, onGround:true, hp:100, stateSince:0
 };
 
-/* ANIMATIONS */
-const ANIMS = { 'idle':4,'idle-2':4,'run':6,'jump':4,'fall':2,'attack1':5,'attack2':6,'attack3':6,'hurt':3,'die':7,'crouch':4,'slide':2 };
+/* ANIMATIONS — use states matching filenames you uploaded */
+const ANIMS = {
+  'idle':4,'idle-2':4,'run':6,'jump':4,'fall':2,'attack1':5,'attack2':6,'attack3':6,
+  'hurt':3,'die':7,'crouch':4,'slide':2,'smrslt':4,'crnr-clmb':5,'crnr-jmp':3
+};
 
 /* Load sprites with robust fallback */
 const SPRITES = {};
@@ -186,7 +188,7 @@ for(const k in ANIMS){
   }
 }
 
-// Protection: wait for a minimum threshold or timeout
+// Protection 7: pause input until some sprites loaded (min threshold)
 const SPRITE_MIN_THRESHOLD = Math.min(6, totalToLoad);
 let spriteReady = false;
 const spriteWaitStart = performance.now();
@@ -199,37 +201,24 @@ const SPRITE_WAIT_TIMEOUT = 1500;
 
 /* INPUT system with protections */
 const INPUT = { left:false, right:false, jump:false, attack:false, crouch:false };
-let activePointerId = null; // single pointer
-let lastAttackAt = 0, lastJumpAt = 0; // cooldowns
+let activePointerId = null; // protection 11: single pointer
+let lastAttackAt = 0, lastJumpAt = 0; // protection 1: cooldowns
 const attackCooldownMs = 420, jumpCooldownMs = 220;
-let queuedAction = null; // single queued action
+let queuedAction = null; // protection 12: limit queued actions
 
-// Input buffer: store taps up to 300ms to execute when possible
-const inputBuffer = [];
-const INPUT_BUFFER_TIME = 300;
-
-// Button press timestamps to resolve left/right conflicts
-let lastLeftAt = 0, lastRightAt = 0, lastDirAt = 0;
-
-// Button anti-spam: track disable timers
-const buttonCooldown = new Map();
-function disableBtnFor(id, ms){ const el=byId(id); if(!el) return; el.disabled=true; buttonCooldown.set(id, performance.now()+ms); setTimeout(()=>{ if(performance.now()>=buttonCooldown.get(id)) { el.disabled=false; buttonCooldown.delete(id);} }, ms+10); }
-
-// Protection 10: block inputs if overlay visible or sprites not ready
+// Protection 10: block inputs if overlay visible
 function inputAllowed(){ return spriteReady && rotateOverlay.classList.contains('hidden'); }
 
-/* Unified pointer binding util */
-function bindBtn(id, onDown, onUp, opts={cooldown:0}){
+/* Unified pointer binding util (protection: pointer capture + single pointer) */
+function bindBtn(id, onDown, onUp){
   const el = byId(id);
   if(!el) return;
   el.addEventListener('pointerdown', (ev)=>{
     if(!inputAllowed()) return;
-    if(el.disabled) return;
     if(activePointerId !== null && activePointerId !== ev.pointerId) return; // ignore multi pointers
     activePointerId = ev.pointerId;
     el.setPointerCapture && el.setPointerCapture(ev.pointerId);
     el.classList.add('pressed');
-    if(opts.cooldown) disableBtnFor(id, opts.cooldown);
     try{ onDown(ev); }catch(e){ console.error(e); }
   });
   el.addEventListener('pointerup', (ev)=>{
@@ -243,43 +232,40 @@ function bindBtn(id, onDown, onUp, opts={cooldown:0}){
   el.addEventListener('pointerleave', (ev)=>{ if(activePointerId === ev.pointerId){ el.classList.remove('pressed'); }});
 }
 
-/* Left / Right with conflict resolution & anti-stuck */
-bindBtn('btnLeft', ()=>{ if(!inputAllowed()) return; lastLeftAt = performance.now(); lastDirAt = lastLeftAt; INPUT.left = true; INPUT.right = false; }, ()=>{ INPUT.left = false; });
-bindBtn('btnRight', ()=>{ if(!inputAllowed()) return; lastRightAt = performance.now(); lastDirAt = lastRightAt; INPUT.right = true; INPUT.left = false; }, ()=>{ INPUT.right = false; });
-
+/* bind controls */
+bindBtn('btnLeft', ()=>INPUT.left=true, ()=>INPUT.left=false);
+bindBtn('btnRight', ()=>INPUT.right=true, ()=>INPUT.right=false);
 bindBtn('btnJump', ()=>{
   if(!inputAllowed()) return;
   const now = performance.now();
-  if(now - lastJumpAt < jumpCooldownMs) return; // cooldown
-  // if not allowed now (in air), buffer it
-  if(!hero.onGround){ inputBuffer.push({type:'jump', t:now}); return; }
+  if(now - lastJumpAt < jumpCooldownMs) return;
   lastJumpAt = now;
   INPUT.jump = true;
-}, ()=>{ INPUT.jump = false; }, {cooldown:80});
+}, ()=>{ INPUT.jump = false; });
 
 bindBtn('btnAttack', ()=>{
   if(!inputAllowed()) return;
   const now = performance.now();
   if(now - lastAttackAt < attackCooldownMs) return;
-  // only allow queued attack if not already in attack state
-  if(hero.state && hero.state.startsWith('attack')) return;
   lastAttackAt = now;
-  INPUT.attack = true; queuedAction = 'attack';
-}, ()=>{ INPUT.attack = false; queuedAction = null; }, {cooldown:120});
+  INPUT.attack = true;
+  // queue limited
+  queuedAction = 'attack';
+}, ()=>{ INPUT.attack = false; queuedAction = null; });
 
-bindBtn('btnCrouch', ()=>{ if(!inputAllowed()) return; INPUT.crouch = true; }, ()=>{ INPUT.crouch = false; });
+bindBtn('btnCrouch', ()=>INPUT.crouch = true, ()=>INPUT.crouch = false);
 
-/* Keyboard (desktop) - similar protections */
+/* Keyboard (desktop) */
 window.addEventListener('keydown', (e)=>{
   if(!inputAllowed()) return;
   if(e.repeat) return;
-  if(e.key === 'ArrowLeft' || e.key === 'a'){ INPUT.left = true; INPUT.right = false; lastLeftAt = performance.now(); }
-  if(e.key === 'ArrowRight' || e.key === 'd'){ INPUT.right = true; INPUT.left = false; lastRightAt = performance.now(); }
-  if((e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') ){
-    const now = performance.now(); if(now - lastJumpAt > jumpCooldownMs){ lastJumpAt = now; if(hero.onGround) INPUT.jump = true; else inputBuffer.push({type:'jump', t:now}); }
+  if(e.key === 'ArrowLeft' || e.key === 'a') INPUT.left = true;
+  if(e.key === 'ArrowRight' || e.key === 'd') INPUT.right = true;
+  if((e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') && (performance.now() - lastJumpAt > jumpCooldownMs)){
+    lastJumpAt = performance.now(); INPUT.jump = true;
   }
-  if(e.key === 'j' || e.key === 'k'){
-    const now=performance.now(); if(now - lastAttackAt > attackCooldownMs && !hero.state.startsWith('attack')){ lastAttackAt=now; INPUT.attack=true; queuedAction='attack'; }
+  if(e.key === 'j' || e.key === 'k') {
+    if(performance.now() - lastAttackAt > attackCooldownMs){ lastAttackAt = performance.now(); INPUT.attack = true; queuedAction='attack'; }
   }
   if(e.key === 's' || e.key === 'ArrowDown') INPUT.crouch = true;
 });
@@ -293,312 +279,252 @@ window.addEventListener('keyup', (e)=>{
 /* PROTECTION 5: clamp velocities */
 const VX_MAX = 12, VY_MAX = 40, VY_MIN = -28;
 
-/* PROTECTION 6: min state durations (ms) */
-const MIN_STATE_DUR = { 'attack1': 300, 'attack2': 300, 'attack3':300, 'hurt': 400, 'die': 99999, 'jump': 180, 'fall': 120 };
-
-/* PRIORITY but allow force */
-const PRIORITY = { die:90, hurt:80, attack1:70, attack2:70, attack3:70, jump:60, fall:50, crouch:40, run:30, idle:10 };
-function canChangeState(curr, next, opts={force:false}){
-  if(curr === next) return false;
-  if(curr === 'die' && !opts.force) return false;
-  const now = performance.now();
-  if(MIN_STATE_DUR[curr] && now - hero.stateSince < MIN_STATE_DUR[curr] && !opts.force) return false;
-  const curP = PRIORITY[curr] || 0, nextP = PRIORITY[next] || 0;
-  if(nextP < curP && !opts.force) return false;
-  return true;
-}
-
-function setState(next, opts={force:false}){
-  const curr=hero.state;
-  if(!canChangeState(curr,next,opts)) return false;
-  hero.state = next; hero.frame = 0; hero.frameTick = 0; hero.stateSince = performance.now(); hero.lastStateChange = performance.now();
-  hero.lastFrameChange = performance.now();
-  return true;
-}
-
-/* Helper to force next state when animation finishes (no priority blocking) */
-function forceState(next){ return setState(next, {force:true}); }
+/* PROTECTION 6: min state durations (ms) to avoid flicker) */
+const MIN_STATE_DUR = {
+  'attack1': 300, 'attack2': 300, 'attack3':300, 'hurt': 400, 'die': 99999, 'jump': 180, 'fall': 120
+};
 
 /* SAFETY helpers */
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function safeNumber(v,def=0){ return (isFinite(v) && !isNaN(v)) ? v : def; }
 
 /* Collision helpers (AABB) */
-function rectOfHero(){ return { x: hero.x - hero.w/2, y: hero.y - hero.h, w: hero.w, h: hero.h }; }
-function rectOverlap(a,b){ return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h); }
+function rectOfHero(){
+  // hero box anchored by bottom-center
+  return { x: hero.x - hero.w/2, y: hero.y - hero.h, w: hero.w, h: hero.h };
+}
+function rectOverlap(a,b){
+  return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
+}
 function resolveAABBCollision(h, obs){
+  // separate axis resolution
   const overlapX = Math.min(h.x + h.w - obs.x, obs.x + obs.w - h.x);
   const overlapY = Math.min(h.y + h.h - obs.y, obs.y + obs.h - h.y);
   if(overlapX <= 0 || overlapY <= 0) return false;
   if(overlapX < overlapY){
-    if(h.x + h.w/2 < obs.x + obs.w/2){ hero.x -= overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1); } else { hero.x += overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1); }
+    // resolve X
+    if(h.x + h.w/2 < obs.x + obs.w/2){
+      hero.x -= overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1);
+    } else {
+      hero.x += overlapX + 0.5; hero.vx = clamp(hero.vx, -1, 1);
+    }
     return true;
   } else {
-    if(h.y + h.h/2 < obs.y + obs.h/2){ hero.y -= overlapY + 0.5; hero.vy = 0; hero.onGround = true; } else { hero.y += overlapY + 0.5; hero.vy = Math.max(hero.vy, 0); }
+    // resolve Y
+    if(h.y + h.h/2 < obs.y + obs.h/2){
+      // hero above obstacle
+      hero.y -= overlapY + 0.5; hero.vy = 0; hero.onGround = true;
+    } else {
+      // hero below obstacle (bump head)
+      hero.y += overlapY + 0.5; hero.vy = Math.max(hero.vy, 0);
+    }
     return true;
   }
 }
 
-/* Input buffer consumer */
-function consumeBuffer(){
+/* STATE machine with priority & protections */
+const PRIORITY = { die:90, hurt:80, attack1:70, attack2:70, attack3:70, jump:60, fall:50, crouch:40, run:30, idle:10 };
+function canChangeState(next){
+  const curr = hero.state;
+  if(curr === next) return false;
+  if(curr === 'die') return false;
   const now = performance.now();
-  while(inputBuffer.length){
-    const it = inputBuffer.shift();
-    if(now - it.t > INPUT_BUFFER_TIME) continue; // expired
-    if(it.type === 'jump' && hero.onGround){ hero.vy = -13.2; hero.onGround = false; setState('jump'); break; }
-  }
+  if(MIN_STATE_DUR[curr] && now - hero.stateSince < MIN_STATE_DUR[curr]) return false;
+  const curP = PRIORITY[curr] || 0, nextP = PRIORITY[next] || 0;
+  if(nextP < curP) return false;
+  return true;
+}
+function setState(next){
+  if(!canChangeState(next)) return false;
+  hero.state = next; hero.frame = 0; hero.frameTick = 0; hero.stateSince = performance.now();
+  return true;
 }
 
-/* main update loop (with try/catch) */
+/* main update loop (with try/catch protection) */
 let last = performance.now();
 function update(dt){
   try {
-    // NaN safety
+    // protection 9: NaN safety
     hero.x = safeNumber(hero.x, 200); hero.y = safeNumber(hero.y, GROUND_Y);
     hero.vx = safeNumber(hero.vx, 0); hero.vy = safeNumber(hero.vy, 0);
 
-    // remember previous onGround to detect landing
-    const prevOnGround = hero.onGround;
-
-    // consume input buffer first
-    consumeBuffer();
-
     // pause inputs until sprite ready
-    if(!spriteReady){ hero.vx *= 0.8; hero.vy += 0.6; }
-    else {
-      // Attack takes precedence but must finish; disallow starting attack in mid-air (unless you want)
-      if(INPUT.attack && hero.onGround && !hero.state.startsWith('attack')){
-        if(performance.now() - hero.stateSince > 40){ setState('attack1'); queuedAction = null; INPUT.attack = false; }
-      } else if(!hero.onGround){
-        // while airborne, choose jump or fall and DO NOT auto-switch to run until you land
-        if(hero.vy < -1) setState('jump'); else setState('fall');
-      } else if(INPUT.crouch){ setState('crouch'); }
-      else if(INPUT.left || INPUT.right){
-        // resolve both pressed: choose most recent direction
-        if(INPUT.left && INPUT.right){
-          if(lastLeftAt > lastRightAt) hero.dir = -1; else hero.dir = 1;
-        } else hero.dir = INPUT.right ? 1 : -1;
-        setState('run');
-        hero.vx += (INPUT.right ? 1 : -1) * 1.2; // stronger acceleration for snappier control
-      } else {
-        // no movement input: reduce vx smoothly and return to idle if on ground
-        hero.vx *= 0.82;
-        if(hero.onGround) setState('idle');
-      }
-
-      // jump consumption (single impulse)
-      if(INPUT.jump && hero.onGround){ hero.vy = -13.2; hero.onGround = false; setState('jump'); INPUT.jump = false; }
-    }
-
-    // physics
-    hero.vy += 0.66;
-    hero.vx = clamp(hero.vx, -VX_MAX, VX_MAX);
-    hero.vy = clamp(hero.vy, VY_MIN, VY_MAX);
-
-    hero.x += hero.vx; hero.y += hero.vy;
-
-    // base ground & landing behavior
-    if(hero.y >= GROUND_Y){
-      if(!prevOnGround && Math.abs(hero.vy) > 18){ hero.hp = clamp(hero.hp - 8, 0, 100); setState('hurt'); }
-      // clamp to ground
-      hero.y = GROUND_Y; hero.vy = 0;
-      // detect landing event
-      if(!prevOnGround){
-        hero.onGround = true;
-        // NEW: after landing, decide animation based on current input
-        // If player is holding run (left/right) -> go to run, else -> idle
-        if(INPUT.left || INPUT.right){
-          forceState('run');
-        } else {
-          forceState('idle');
-        }
-      } else {
-        hero.onGround = true;
-      }
+    if(!spriteReady){
+      hero.vx *= 0.8; hero.vy += 0.6; // gentle physics but no inputs
     } else {
-      hero.onGround = false;
-    }
-
-    // obstacle collisions
-    const hRect = rectOfHero();
-    for(const obs of obstacles){ if(rectOverlap(hRect, obs)) resolveAABBCollision(hRect, obs); }
-
-    // clamp hero inside world bounds
-    hero.x = clamp(hero.x, 32, Math.max(600, W - 32));
-
-    // animation tick & protections against stuck repeating
-    hero.frameTick += Math.max(1, Math.floor(dt / 16));
-    const animMeta = ANIMS[hero.state] || ANIMS['idle'];
-    const ticksPerFrame = (hero.state === 'run' ? 4 : (hero.state.startsWith('attack') ? 6 : 8));
-    if(hero.frameTick >= ticksPerFrame){
-      hero.frameTick = 0;
-      const prevFrame = hero.frame;
-      hero.frame++;
-      hero.lastFrameChange = performance.now();
-
-      // when frame reaches end
-      if(hero.frame >= animMeta){
-        const nonLooping = !['idle','run','fall','crouch'].includes(hero.state);
-        if(!animMeta || animMeta <= 0) hero.frame = 0; else {
-          if(!nonLooping){ hero.frame = hero.frame % animMeta; }
-          else {
-            // finished a non-looping animation -> go to appropriate next (force)
-            // Prefer movement if input held
-            if(INPUT.left || INPUT.right) forceState('run');
-            else forceState('idle');
-            hero.frame = 0;
-          }
-        }
-      }
-    }
-
-    // stuck-state watchdog: if state hasn't changed frames in a long time, reset to idle
-    if(performance.now() - hero.lastFrameChange > 2500){ console.warn('frame stalled, forcing idle'); forceState('idle'); }
-
-    // queuedAction cleanup
-    if(queuedAction && queuedAction === 'attack' && !hero.state.startsWith('attack')) queuedAction = null;
-
-    // sanitize numbers
-    hero.x = safeNumber(hero.x, 200); hero.y = safeNumber(hero.y, GROUND_Y);
-
-  } catch(err){
-    console.error('update error', err);
-    hero.vx = 0; hero.vy = 0; hero.state = 'idle'; hero.frame = 0; hero.frameTick = 0; hero.hp = clamp(hero.hp,0,100);
-  }
-}
-    else {
-      // Attack takes precedence but must finish; disallow starting attack in mid-air (unless you want)
-      if(INPUT.attack && hero.onGround && !hero.state.startsWith('attack')){
-        if(performance.now() - hero.stateSince > 40){ setState('attack1'); queuedAction = null; INPUT.attack = false; }
+      // input handling with priority
+      // Attack priority
+      if(INPUT.attack && performance.now() - hero.stateSince > 60){
+        if(setState('attack1')) { /* attack started */ }
       } else if(!hero.onGround){
         if(hero.vy < -1) setState('jump'); else setState('fall');
-      } else if(INPUT.crouch){ setState('crouch'); }
-      else if(INPUT.left || INPUT.right){
-        // resolve both pressed: choose most recent direction
-        if(INPUT.left && INPUT.right){
-          if(lastLeftAt > lastRightAt) hero.dir = -1; else hero.dir = 1;
-        } else hero.dir = INPUT.right ? 1 : -1;
+      } else if(INPUT.crouch){
+        setState('crouch');
+      } else if(INPUT.left || INPUT.right){
+        hero.dir = INPUT.right ? 1 : -1;
         setState('run');
-        hero.vx += (INPUT.right ? 1 : -1) * 1.2; // stronger acceleration for snappier control
+        // accelerate
+        hero.vx += (INPUT.right ? 1 : -1) * 0.9;
       } else {
-        // no movement input: reduce vx smoothly and return to idle if on ground
+        setState('idle');
         hero.vx *= 0.82;
-        if(hero.onGround) setState('idle');
       }
 
       // jump consumption (single impulse)
-      if(INPUT.jump && hero.onGround){ hero.vy = -13.2; hero.onGround = false; setState('jump'); INPUT.jump = false; }
+      if(INPUT.jump && hero.onGround){
+        hero.vy = -13.2; hero.onGround = false; setState('jump'); INPUT.jump = false;
+      }
     }
 
     // physics
     hero.vy += 0.66;
+    // clamps (protection 5)
     hero.vx = clamp(hero.vx, -VX_MAX, VX_MAX);
     hero.vy = clamp(hero.vy, VY_MIN, VY_MAX);
 
-    hero.x += hero.vx; hero.y += hero.vy;
+    hero.x += hero.vx;
+    hero.y += hero.vy;
 
     // base ground
     if(hero.y >= GROUND_Y){
-      if(!hero.onGround && Math.abs(hero.vy) > 18){ hero.hp = clamp(hero.hp - 8, 0, 100); setState('hurt'); }
+      if(!hero.onGround && Math.abs(hero.vy) > 18){
+        // heavy landing => hurt
+        hero.hp = clamp(hero.hp - 8, 0, 100);
+        setState('hurt');
+      }
       hero.y = GROUND_Y; hero.vy = 0; hero.onGround = true;
     } else hero.onGround = false;
 
-    // obstacle collisions
+    // obstacle collisions (protection 8)
     const hRect = rectOfHero();
-    for(const obs of obstacles){ if(rectOverlap(hRect, obs)) resolveAABBCollision(hRect, obs); }
+    for(const obs of obstacles){
+      if(rectOverlap(hRect, obs)) {
+        resolveAABBCollision(hRect, obs);
+      }
+    }
 
-    // clamp hero inside world bounds
+    // clamp hero inside world bounds (protection 1)
     hero.x = clamp(hero.x, 32, Math.max(600, W - 32));
 
-    // animation tick & protections against stuck repeating
+    // animation tick: protection 2 & 3 (frame safe checks)
     hero.frameTick += Math.max(1, Math.floor(dt / 16));
     const animMeta = ANIMS[hero.state] || ANIMS['idle'];
     const ticksPerFrame = (hero.state === 'run' ? 4 : (hero.state.startsWith('attack') ? 6 : 8));
     if(hero.frameTick >= ticksPerFrame){
       hero.frameTick = 0;
-      const prevFrame = hero.frame;
       hero.frame++;
-      hero.lastFrameChange = performance.now();
-
-      // when frame reaches end
       if(hero.frame >= animMeta){
-        const nonLooping = !['idle','run','fall','crouch'].includes(hero.state);
-        if(!animMeta || animMeta <= 0) hero.frame = 0; else {
-          if(!nonLooping){ hero.frame = hero.frame % animMeta; }
+        if(animMeta && animMeta > 0){
+          // finalize non-looping
+          const loopStates = ['idle','run','fall','crouch'];
+          if(loopStates.includes(hero.state)) hero.frame = hero.frame % animMeta;
           else {
-            // finished a non-looping animation -> go to appropriate next (force)
-            // Prefer movement if input held
-            if(INPUT.left || INPUT.right) forceState('run');
-            else forceState('idle');
-            hero.frame = 0;
+            // return to idle or appropriate state
+            if(hero.onGround) setState('idle'); else setState('fall');
           }
+        } else {
+          hero.frame = 0;
         }
       }
     }
 
-    // stuck-state watchdog: if state hasn't changed frames in a long time, reset to idle
-    if(performance.now() - hero.lastFrameChange > 2500){ console.warn('frame stalled, forcing idle'); forceState('idle'); }
+    // protection 11: reset queuedAction after processing
+    if(queuedAction && queuedAction === 'attack' && hero.state !== 'attack1') queuedAction = null;
 
-    // queuedAction cleanup
-    if(queuedAction && queuedAction === 'attack' && !hero.state.startsWith('attack')) queuedAction = null;
-
-    // sanitize numbers
+    // protection 9 ensure safe numbers
     hero.x = safeNumber(hero.x, 200); hero.y = safeNumber(hero.y, GROUND_Y);
 
   } catch(err){
     console.error('update error', err);
-    hero.vx = 0; hero.vy = 0; hero.state = 'idle'; hero.frame = 0; hero.frameTick = 0; hero.hp = clamp(hero.hp,0,100);
+    // protection 13: don't crash loop - attempt safe reset
+    hero.vx = 0; hero.vy = 0; hero.state = 'idle'; hero.frame = 0;
   }
 }
 
-/* DRAW */
+/* DRAW with protections */
 function draw(){
   try {
     ctx.clearRect(0,0,W,H);
+    // background
     const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#242628'); g.addColorStop(1,'#101214');
     ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 
     // obstacles
-    for(const obs of obstacles){ ctx.fillStyle = '#2b2c2f'; ctx.fillRect(obs.x, obs.y, obs.w, obs.h); ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.strokeRect(obs.x, obs.y, obs.w, obs.h); }
+    for(const obs of obstacles){
+      ctx.fillStyle = '#2b2c2f';
+      ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+      ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+    }
 
-    // hero draw (fallback rectangle if images missing)
+    // hero draw (protection 3 & 4 & 15)
     const animSet = SPRITES[hero.state] && SPRITES[hero.state].length ? SPRITES[hero.state] : (SPRITES['idle'] || []);
     const frameIndex = hero.frame % (animSet.length || 1);
     const img = animSet[frameIndex] || null;
     if(img && img.complete && img.naturalWidth){
-      const scale = Math.max(1.2, Math.min(2.1, (H/720) * 1.8));
+      const scale = Math.max(1.4, Math.min(2.0, (H/720) * 1.9));
       const w = img.width * scale, h = img.height * scale;
-      ctx.save(); ctx.translate(hero.x, hero.y); ctx.scale(hero.dir,1);
-      try { ctx.drawImage(img, -w/2, -h, w, h); } catch(e){ ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h); }
+      ctx.save();
+      ctx.translate(hero.x, hero.y);
+      ctx.scale(hero.dir, 1);
+      try {
+        ctx.drawImage(img, -w/2, -h, w, h);
+      } catch(e){
+        // fallback: rectangle when drawImage fails (protection 3)
+        ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h);
+      }
       ctx.restore();
     } else {
-      ctx.save(); ctx.translate(hero.x, hero.y); ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h); ctx.restore();
+      ctx.save(); ctx.translate(hero.x, hero.y);
+      ctx.fillStyle = '#8a8d90'; ctx.fillRect(-hero.w/2, -hero.h, hero.w, hero.h);
+      ctx.restore();
     }
 
-    // HUD overlay shadow
+    // overlays like HUD shadow
     ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(0,0,W,48);
 
-  } catch(err){ console.error('draw error', err); }
+  } catch(err){
+    console.error('draw error', err);
+  }
 }
 
-/* GAME LOOP */
+/* GAME LOOP (time-based) */
 let lastT = performance.now();
-function loop(now){ try{ const dt = now - lastT; lastT = now; update(dt); draw(); } catch(e){ console.error('main loop error', e); } requestAnimationFrame(loop); }
+function loop(now){
+  try {
+    const dt = now - lastT; lastT = now;
+    update(dt); draw();
+  } catch(e){ console.error('main loop error', e); }
+  requestAnimationFrame(loop);
+}
 
-// start when ready
-(function startWhenReady(){ if(spriteReady || performance.now() - spriteWaitStart > SPRITE_WAIT_TIMEOUT){ lastT = performance.now(); requestAnimationFrame(loop); showToast('Siap! Gunakan kontrol pojok untuk main'); } else setTimeout(startWhenReady, 80); })();
+// start once some sprites loaded (protection 7)
+(function startWhenReady(){
+  if(spriteReady || performance.now() - spriteWaitStart > SPRITE_WAIT_TIMEOUT){
+    lastT = performance.now();
+    requestAnimationFrame(loop);
+    showToast('Siap! Gunakan kontrol pojok untuk main');
+  } else {
+    setTimeout(startWhenReady, 80);
+  }
+})();
 
-/* HP UI update */
-function updateHpUI(){ const hb = byId('hpFill'); const ht = byId('hpText'); if(hb && ht){ hb.style.width = hero.hp + '%'; ht.textContent = hero.hp + '%'; if(hero.hp > 60) hb.style.background = 'linear-gradient(90deg,var(--hp-green),#10b981)'; else if(hero.hp > 30) hb.style.background = 'linear-gradient(90deg,var(--hp-yellow),#f97316)'; else hb.style.background = 'linear-gradient(90deg,var(--hp-red),#ef4444)'; } }
-setInterval(updateHpUI, 120);
+/* update UI HP bar */
+setInterval(()=>{ const hb = byId('hpFill'); if(hb) hb.style.width = hero.hp + '%'; }, 120);
 
-/* protection: remove obvious watermarks */
-setTimeout(()=>{ Array.from(document.querySelectorAll('img,div')).forEach(el=>{ try{ if(el.innerText && /apkpure/i.test(el.innerText)) el.remove(); if(el.src && typeof el.src === 'string' && /apkpure/i.test(el.src)) el.remove(); }catch(e){} }); }, 900);
+/* protection 15: remove watermark if any */
+setTimeout(()=>{
+  Array.from(document.querySelectorAll('img,div')).forEach(el=>{
+    try{
+      if(el.innerText && /apkpure/i.test(el.innerText)) el.remove();
+      if(el.src && typeof el.src === 'string' && /apkpure/i.test(el.src)) el.remove();
+    }catch(e){}
+  });
+}, 900);
 
 /* safety: clear inputs when tab hidden */
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ INPUT.left = INPUT.right = INPUT.attack = INPUT.jump = INPUT.crouch = false; } });
 
-/* desktop hint */
+/* show hint for desktop */
 if(window.innerWidth > 900) setTimeout(()=> showToast('Gunakan A/D atau Panah ← → untuk bergerak, Space untuk lompat, J untuk serang'), 1200);
 </script>
 </body>
